@@ -1,0 +1,1572 @@
+// 訂單數據存儲
+let orders = [];
+let groups = JSON.parse(localStorage.getItem("groups")) || [
+  "電話訂購",
+  "家庭訂購",
+  "公司團購",
+];
+
+// 分頁變數
+let currentPage = 1;
+let pageSize = 20;
+let filteredOrders = [];
+
+// 儲存菜品到 localStorage
+function saveDishes() {
+  localStorage.setItem("dishes", JSON.stringify(DISHES));
+  console.log("菜品已儲存:", DISHES);
+}
+
+// 菜品列表 - 從 localStorage 載入，如果沒有則使用預設值
+let DISHES = JSON.parse(localStorage.getItem("dishes")) || [
+  { name: "甘蔗香燻雞", price: 680 },
+  { name: "糖醋海鱸魚", price: 380 },
+  { name: "洪家筍干Q蹄膀", price: 650 },
+  { name: "皇品魚翅蝦仁羹", price: 650 },
+  { name: "香菇藥膳燉春雞", price: 760 },
+  { name: "洪家八寶丸(一斤)", price: 320 },
+  { name: "櫻花蝦米糕", price: 350 },
+  { name: "御品干貝佛跳牆(不含甕)", price: 800 },
+  { name: "蜜汁全排骨(五支)", price: 290 },
+  { name: "白雪旗魚丸(一斤)", price: 230 },
+  { name: "極鮮旗魚卷", price: 130 },
+  { name: "筍干", price: 100 },
+];
+
+// 如果是首次使用，儲存預設菜品
+if (!localStorage.getItem("dishes")) {
+  localStorage.setItem("dishes", JSON.stringify(DISHES));
+  console.log("首次載入，已儲存預設菜品");
+}
+
+// 安全載入訂單數據並驗證
+try {
+  const storedOrders = JSON.parse(localStorage.getItem("orders")) || [];
+  // 過濾掉損壞的訂單（沒有 dishQuantities 的訂單）
+  orders = storedOrders.filter((order) => {
+    if (!order.dishQuantities || !order.customer) {
+      console.warn("發現損壞的訂單，已自動移除:", order);
+      return false;
+    }
+    return true;
+  });
+  // 如果有損壞的訂單被移除，更新 localStorage
+  if (orders.length !== storedOrders.length) {
+    localStorage.setItem("orders", JSON.stringify(orders));
+    console.log(`已清理 ${storedOrders.length - orders.length} 筆損壞的訂單`);
+  }
+} catch (error) {
+  console.error("載入訂單失敗，重置為空陣列:", error);
+  orders = [];
+  localStorage.setItem("orders", JSON.stringify(orders));
+}
+
+// 自訂提示窗函數
+function showAlert(message, type = "info", callback = null) {
+  const overlay = document.getElementById("customAlert");
+  const icon = document.getElementById("alertIcon");
+  const messageEl = document.getElementById("alertMessage");
+  const buttonsEl = document.getElementById("alertButtons");
+
+  // 設置圖標
+  const icons = {
+    success: "✅",
+    error: "❌",
+    warning: "⚠️",
+    info: "ℹ️",
+  };
+
+  icon.textContent = icons[type] || icons.info;
+  icon.className = `custom-alert-icon ${type}`;
+
+  // 設置消息
+  messageEl.textContent = message;
+
+  // 設置按鈕
+  buttonsEl.innerHTML = `
+        <button class="custom-alert-btn custom-alert-btn-primary" onclick="closeAlert()">確定</button>
+    `;
+
+  // 顯示提示窗
+  overlay.classList.add("show");
+
+  // 如果有回調函數，設置確定按鈕的點擊事件
+  if (callback) {
+    const btn = buttonsEl.querySelector("button");
+    btn.onclick = function () {
+      closeAlert();
+      callback();
+    };
+  }
+}
+
+function showConfirm(message, onConfirm, onCancel = null) {
+  const overlay = document.getElementById("customAlert");
+  const icon = document.getElementById("alertIcon");
+  const messageEl = document.getElementById("alertMessage");
+  const buttonsEl = document.getElementById("alertButtons");
+
+  // 設置圖標
+  icon.textContent = "❓";
+  icon.className = "custom-alert-icon warning";
+
+  // 設置消息
+  messageEl.textContent = message;
+
+  // 設置按鈕
+  buttonsEl.innerHTML = `
+        <button class="custom-alert-btn custom-alert-btn-secondary" id="cancelBtn">取消</button>
+        <button class="custom-alert-btn custom-alert-btn-primary" id="confirmBtn">確定</button>
+    `;
+
+  // 顯示提示窗
+  overlay.classList.add("show");
+
+  // 設置按鈕事件
+  document.getElementById("confirmBtn").onclick = function () {
+    closeAlert();
+    if (onConfirm) onConfirm();
+  };
+
+  document.getElementById("cancelBtn").onclick = function () {
+    closeAlert();
+    if (onCancel) onCancel();
+  };
+}
+
+function closeAlert() {
+  const overlay = document.getElementById("customAlert");
+  overlay.classList.remove("show");
+}
+
+// 初始化頁面
+document.addEventListener("DOMContentLoaded", function () {
+  console.log("頁面載入完成");
+  console.log("DISHES 陣列:", DISHES);
+  renderDishesInForm(); // 渲染菜品列表
+  loadOrders();
+  updateStatistics();
+  setupEventListeners();
+  updateGroupOptions();
+});
+
+// 設置事件監聽器
+function setupEventListeners() {
+  // 表單提交
+  document
+    .getElementById("orderForm")
+    .addEventListener("submit", handleFormSubmit);
+
+  // 搜索輸入即時搜尋
+  document
+    .getElementById("searchInput")
+    .addEventListener("input", searchOrders);
+
+  // 群組篩選
+  document
+    .getElementById("groupFilter")
+    .addEventListener("change", searchOrders);
+}
+
+// 增加數量（點擊數量框）
+function incrementQuantity(quantityBox) {
+  const row = quantityBox.closest(".dish-input-row");
+  const display = quantityBox.querySelector(".quantity-display");
+  let currentQty = parseInt(display.textContent) || 0;
+  currentQty++;
+  display.textContent = currentQty;
+
+  // 更新樣式
+  if (currentQty > 0) {
+    quantityBox.classList.add("has-value");
+  } else {
+    quantityBox.classList.remove("has-value");
+  }
+
+  // 更新小計和總計
+  updateRowSubtotal(row);
+  
+  // 判斷是在訂購表單還是編輯模式
+  const isEditMode = row.closest('#editFormContainer') !== null;
+  if (isEditMode) {
+    calculateEditTotal();
+  } else {
+    calculateTotal();
+  }
+}
+
+// 重置所有數量
+function resetAllQuantities() {
+  showConfirm("確定要重置所有菜品數量嗎？", () => {
+    document.querySelectorAll(".quantity-box").forEach((box) => {
+      const display = box.querySelector(".quantity-display");
+      display.textContent = "0";
+      box.classList.remove("has-value");
+    });
+
+    document.querySelectorAll(".dish-input-row").forEach((row) => {
+      updateRowSubtotal(row);
+    });
+
+    calculateTotal();
+  });
+}
+
+// 重置單一菜品數量
+function resetDishQuantity(button) {
+  const row = button.closest(".dish-input-row");
+  const quantityBox = row.querySelector(".quantity-box");
+  const display = quantityBox.querySelector(".quantity-display");
+
+  display.textContent = "0";
+  quantityBox.classList.remove("has-value");
+
+  // 更新小計和總計
+  updateRowSubtotal(row);
+  
+  // 判斷是在訂購表單還是編輯模式
+  const isEditMode = row.closest('#editFormContainer') !== null;
+  if (isEditMode) {
+    calculateEditTotal();
+  } else {
+    calculateTotal();
+  }
+}
+
+// 更新單行小計
+function updateRowSubtotal(row) {
+  const price = parseInt(row.getAttribute("data-price"));
+  const quantityBox = row.querySelector(".quantity-box");
+  const quantity =
+    parseInt(quantityBox.querySelector(".quantity-display").textContent) || 0;
+  const subtotal = price * quantity;
+  row.querySelector(".dish-subtotal").textContent =
+    "NT$ " + subtotal.toLocaleString();
+}
+
+// 計算總金額
+function calculateTotal() {
+  let total = 0;
+  // 只計算訂購表單中的菜品（不包括菜品管理區）
+  const form = document.getElementById("orderForm");
+  if (form) {
+    form.querySelectorAll(".dish-input-row").forEach((row) => {
+      const price = parseInt(row.getAttribute("data-price"));
+      const quantityBox = row.querySelector(".quantity-box");
+      const quantity =
+        parseInt(quantityBox.querySelector(".quantity-display").textContent) ||
+        0;
+      total += price * quantity;
+    });
+  }
+  document.getElementById("orderTotal").textContent = total.toLocaleString();
+}
+
+// 新增群組
+function addNewGroup() {
+  const groupName = prompt("請輸入新群組名稱：");
+  if (groupName && groupName.trim()) {
+    const trimmedName = groupName.trim();
+    if (!groups.includes(trimmedName)) {
+      groups.push(trimmedName);
+      localStorage.setItem("groups", JSON.stringify(groups));
+      updateGroupOptions();
+      document.getElementById("customerGroup").value = trimmedName;
+    } else {
+      showAlert("此群組已存在！", "error");
+    }
+  }
+}
+
+// 更新群組選項
+function updateGroupOptions() {
+  const groupSelect = document.getElementById("customerGroup");
+  const groupFilter = document.getElementById("groupFilter");
+
+  // 更新表單群組選項
+  groupSelect.innerHTML = '<option value="">請選擇或新增群組</option>';
+  groups.forEach((group) => {
+    const option = document.createElement("option");
+    option.value = group;
+    option.textContent = group;
+    groupSelect.appendChild(option);
+  });
+
+  // 更新篩選群組選項
+  groupFilter.innerHTML = '<option value="">所有群組</option>';
+  groups.forEach((group) => {
+    const option = document.createElement("option");
+    option.value = group;
+    option.textContent = group;
+    groupFilter.appendChild(option);
+  });
+}
+
+// 處理表單提交
+function handleFormSubmit(e) {
+  e.preventDefault();
+
+  console.log("表單提交開始...");
+
+  const orderNumber = document.getElementById("orderNumber").value.trim();
+
+  // 檢查訂單號碼是否重複
+  const isDuplicate = orders.some((order) => order.orderNumber === orderNumber);
+  if (isDuplicate) {
+    showAlert("此訂單號碼已存在，請使用不同的號碼！", "error");
+    return;
+  }
+
+  const customerData = {
+    name: document.getElementById("customerName").value,
+    phone: document.getElementById("customerPhone").value,
+    group: document.getElementById("customerGroup").value,
+    note: document.getElementById("customerNote").value,
+  };
+
+  console.log("客戶資料:", customerData);
+
+  // 收集數量 > 0 的菜品（只從訂購表單中收集）
+  const dishQuantities = {};
+  let hasOrder = false;
+
+  const form = document.getElementById("orderForm");
+  form.querySelectorAll(".dish-input-row").forEach((row) => {
+    const dishName = row.getAttribute("data-name");
+    const quantityBox = row.querySelector(".quantity-box");
+    if (quantityBox) {
+      const quantity =
+        parseInt(quantityBox.querySelector(".quantity-display").textContent) || 0;
+      dishQuantities[dishName] = quantity;
+      if (quantity > 0) hasOrder = true;
+    }
+  });
+
+  console.log("菜品數量:", dishQuantities);
+  console.log("是否有訂單:", hasOrder);
+
+  if (!hasOrder) {
+    showAlert("請至少訂購一個菜品（數量 > 0）", "error");
+    return;
+  }
+
+  // 計算總金額
+  let total = 0;
+  DISHES.forEach((dish) => {
+    const qty = dishQuantities[dish.name] || 0;
+    total += dish.price * qty;
+  });
+
+  const order = {
+    id: Date.now(),
+    orderNumber: orderNumber,
+    customer: customerData,
+    dishQuantities: dishQuantities,
+    total: total,
+    createdAt: new Date().toISOString(),
+  };
+
+  console.log("準備儲存的訂單:", order);
+
+  orders.unshift(order);
+  console.log("訂單陣列(儲存前):", orders);
+
+  saveOrders();
+  console.log("已呼叫 saveOrders()");
+
+  loadOrders();
+  updateStatistics();
+  resetForm();
+
+  showAlert("訂單已成功建立！", "success");
+  document
+    .querySelector(".orders-section")
+    .scrollIntoView({ behavior: "smooth" });
+}
+
+// 重置表單
+function resetForm() {
+  document.getElementById("orderForm").reset();
+  document.querySelectorAll(".quantity-box").forEach((box) => {
+    const display = box.querySelector(".quantity-display");
+    display.textContent = "0";
+    box.classList.remove("has-value");
+  });
+  document.querySelectorAll(".dish-input-row").forEach((row) => {
+    row.querySelector(".dish-subtotal").textContent = "NT$ 0";
+  });
+  document.getElementById("orderTotal").textContent = "0";
+}
+
+// 保存訂單到 LocalStorage
+function saveOrders() {
+  try {
+    localStorage.setItem("orders", JSON.stringify(orders));
+    console.log("訂單已儲存到 localStorage，共", orders.length, "筆");
+  } catch (error) {
+    console.error("儲存訂單失敗:", error);
+    showAlert("儲存訂單時發生錯誤: " + error.message, "error");
+  }
+}
+
+// 載入訂單（表格版本 + 分頁）
+function loadOrders() {
+  const tbody = document.getElementById("ordersTableBody");
+
+  // 使用當前的過濾/排序結果
+  filteredOrders = [...orders];
+
+  // 如果沒有訂單
+  if (filteredOrders.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="7" class="no-orders-row">目前沒有訂單</td></tr>';
+    updatePaginationInfo();
+    return;
+  }
+
+  // 計算分頁
+  const totalPages = Math.ceil(filteredOrders.length / pageSize);
+  if (currentPage > totalPages) {
+    currentPage = totalPages;
+  }
+  if (currentPage < 1) {
+    currentPage = 1;
+  }
+
+  // 計算當前頁的訂單範圍
+  const startIndex = (currentPage - 1) * pageSize;
+  const endIndex = Math.min(startIndex + pageSize, filteredOrders.length);
+  const currentOrders = filteredOrders.slice(startIndex, endIndex);
+
+  // 生成表格行
+  tbody.innerHTML = currentOrders
+    .map((order) => {
+      return `
+        <tr>
+          <td class="order-number">${order.orderNumber || order.id}</td>
+          <td>${order.customer.name}</td>
+          <td>${order.customer.phone}</td>
+          <td>${order.customer.group || "未分組"}</td>
+          <td class="order-date">${formatDate(order.createdAt)}</td>
+          <td class="order-total">NT$ ${order.total.toLocaleString()}</td>
+          <td class="order-actions">
+            <button class="btn-detail" onclick="showOrderDetail(${order.id})">詳情</button>
+            <button class="btn-edit-small" onclick="editOrder(${order.id})">編輯</button>
+            <button class="btn-delete-small" onclick="deleteOrder(${order.id})">刪除</button>
+          </td>
+        </tr>
+      `;
+    })
+    .join("");
+
+  // 更新分頁資訊
+  updatePaginationInfo();
+  updatePaginationButtons();
+}
+
+// 更新分頁資訊顯示
+function updatePaginationInfo() {
+  const totalOrders = filteredOrders.length;
+  const totalPages = Math.ceil(totalOrders / pageSize);
+  const startIndex = totalOrders === 0 ? 0 : (currentPage - 1) * pageSize + 1;
+  const endIndex = Math.min(currentPage * pageSize, totalOrders);
+
+  document.getElementById("pageInfo").textContent = 
+    `顯示第 ${startIndex}-${endIndex} 筆，共 ${totalOrders} 筆訂單`;
+  document.getElementById("currentPage").textContent = `第 ${currentPage} / ${totalPages} 頁`;
+}
+
+// 更新分頁按鈕狀態
+function updatePaginationButtons() {
+  const totalPages = Math.ceil(filteredOrders.length / pageSize);
+  
+  document.getElementById("firstPageBtn").disabled = currentPage === 1;
+  document.getElementById("prevPageBtn").disabled = currentPage === 1;
+  document.getElementById("nextPageBtn").disabled = currentPage === totalPages || totalPages === 0;
+  document.getElementById("lastPageBtn").disabled = currentPage === totalPages || totalPages === 0;
+}
+
+// 換頁功能
+function changePage(direction) {
+  const totalPages = Math.ceil(filteredOrders.length / pageSize);
+  
+  switch(direction) {
+    case 'first':
+      currentPage = 1;
+      break;
+    case 'prev':
+      if (currentPage > 1) currentPage--;
+      break;
+    case 'next':
+      if (currentPage < totalPages) currentPage++;
+      break;
+    case 'last':
+      currentPage = totalPages;
+      break;
+  }
+  
+  loadOrders();
+}
+
+// 變更每頁顯示數量
+function changePageSize() {
+  const select = document.getElementById("pageSizeSelect");
+  pageSize = parseInt(select.value);
+  currentPage = 1; // 重置到第一頁
+  loadOrders();
+}
+
+// 顯示訂單詳情
+function showOrderDetail(orderId) {
+  const order = orders.find(o => o.id === orderId);
+  if (!order) return;
+
+  // 安全檢查
+  if (!order.dishQuantities) {
+    showAlert("訂單資料異常，無法顯示詳情");
+    return;
+  }
+
+  // 計算訂購的菜品
+  const orderedDishes = DISHES.filter(dish => order.dishQuantities[dish.name] > 0);
+
+  // 生成詳情內容
+  const detailContent = `
+    <div style="padding: 20px;">
+      <h3 style="color: #e74c3c; margin-bottom: 20px;">訂單詳情 - ${order.orderNumber || order.id}</h3>
+      
+      <div style="background: #f8f9fa; padding: 15px; border-radius: 8px; margin-bottom: 20px;">
+        <h4 style="margin-bottom: 10px;">訂購人資訊</h4>
+        <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px;">
+          <div><strong>姓名：</strong>${order.customer.name}</div>
+          <div><strong>電話：</strong>${order.customer.phone}</div>
+          <div><strong>群組：</strong>${order.customer.group || "未分組"}</div>
+          <div><strong>日期：</strong>${formatDate(order.createdAt)}</div>
+        </div>
+        ${order.customer.note ? `<div style="margin-top: 10px;"><strong>備註：</strong>${order.customer.note}</div>` : ''}
+      </div>
+
+      <div style="background: #fff; padding: 15px; border: 1px solid #e0e0e0; border-radius: 8px;">
+        <h4 style="margin-bottom: 15px;">訂購菜品</h4>
+        <table style="width: 100%; border-collapse: collapse;">
+          <thead>
+            <tr style="background: #f8f9fa; border-bottom: 2px solid #e0e0e0;">
+              <th style="padding: 10px; text-align: left;">菜品名稱</th>
+              <th style="padding: 10px; text-align: center;">單價</th>
+              <th style="padding: 10px; text-align: center;">數量</th>
+              <th style="padding: 10px; text-align: right;">小計</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${orderedDishes.map(dish => {
+              const qty = order.dishQuantities[dish.name];
+              const subtotal = dish.price * qty;
+              return `
+                <tr style="border-bottom: 1px solid #e0e0e0;">
+                  <td style="padding: 10px;">${dish.name}</td>
+                  <td style="padding: 10px; text-align: center;">NT$ ${dish.price.toLocaleString()}</td>
+                  <td style="padding: 10px; text-align: center;">${qty}</td>
+                  <td style="padding: 10px; text-align: right; font-weight: 600;">NT$ ${subtotal.toLocaleString()}</td>
+                </tr>
+              `;
+            }).join('')}
+          </tbody>
+          <tfoot>
+            <tr style="background: #f8f9fa; font-weight: bold; font-size: 1.1em;">
+              <td colspan="3" style="padding: 15px; text-align: right;">總金額：</td>
+              <td style="padding: 15px; text-align: right; color: #27ae60;">NT$ ${order.total.toLocaleString()}</td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    </div>
+  `;
+
+  // 顯示 Modal
+  const modal = document.getElementById("orderDetailModal");
+  const contentDiv = document.getElementById("orderDetailContainer");
+  contentDiv.innerHTML = detailContent;
+  modal.style.display = "flex";
+}
+
+// 關閉訂單詳情
+function closeOrderDetailModal() {
+  document.getElementById("orderDetailModal").style.display = "none";
+}
+
+// 格式化日期
+function formatDate(dateString) {
+  const date = new Date(dateString);
+  return `${date.getFullYear()}/${String(date.getMonth() + 1).padStart(
+    2,
+    "0"
+  )}/${String(date.getDate()).padStart(2, "0")} ${String(
+    date.getHours()
+  ).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
+}
+
+// 編輯訂單
+function editOrder(orderId) {
+  const order = orders.find((o) => o.id === orderId);
+  if (!order || !order.dishQuantities) return;
+
+  const dishRowsHTML = DISHES.map((dish) => {
+    const qty = order.dishQuantities[dish.name] || 0;
+    const subtotal = dish.price * qty;
+    const hasValueClass = qty > 0 ? "has-value" : "";
+    return `
+            <div class="dish-input-row" data-name="${dish.name}" data-price="${
+      dish.price
+    }">
+                <div class="dish-name">${dish.name}</div>
+                <div class="dish-price">NT$ ${dish.price.toLocaleString()}</div>
+                <div class="quantity-box ${hasValueClass}" onclick="incrementQuantity(this)">
+                    <span class="quantity-display">${qty}</span>
+                </div>
+                <div class="dish-subtotal">NT$ ${subtotal.toLocaleString()}</div>
+                <button type="button" class="btn-reset-dish" onclick="resetDishQuantity(this)" title="重置此菜品數量">🔄</button>
+            </div>
+        `;
+  }).join("");
+
+  const modalContent = `
+        <form id="editOrderForm">
+            <div class="form-group">
+                <h3>訂購人資料</h3>
+                <div class="form-row">
+                    <div class="form-field">
+                        <label for="editOrderNumber">訂單號碼 *</label>
+                        <input type="text" id="editOrderNumber" value="${
+                          order.orderNumber || order.id
+                        }" required>
+                    </div>
+                    <div class="form-field">
+                        <label for="editCustomerName">姓名 *</label>
+                        <input type="text" id="editCustomerName" value="${
+                          order.customer.name
+                        }" required>
+                    </div>
+                    <div class="form-field">
+                        <label for="editCustomerPhone">聯絡電話 *</label>
+                        <input type="tel" id="editCustomerPhone" value="${
+                          order.customer.phone
+                        }" required>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-field">
+                        <label for="editCustomerGroup">所屬群組 *</label>
+                        <select id="editCustomerGroup" required>
+                            <option value="">請選擇群組</option>
+                            ${groups
+                              .map(
+                                (group) =>
+                                  `<option value="${group}" ${
+                                    order.customer.group === group
+                                      ? "selected"
+                                      : ""
+                                  }>${group}</option>`
+                              )
+                              .join("")}
+                        </select>
+                    </div>
+                </div>
+                <div class="form-field">
+                    <label for="editCustomerNote">備註</label>
+                    <textarea id="editCustomerNote" rows="2">${
+                      order.customer.note || ""
+                    }</textarea>
+                </div>
+            </div>
+            
+            <div class="form-group">
+                <h3>菜品訂購（點擊數量快速增加）</h3>
+                <div class="dishes-table">
+                    <div class="dishes-header">
+                        <div>菜品名稱</div>
+                        <div>單價</div>
+                        <div>數量</div>
+                        <div>小計</div>
+                        <div>操作</div>
+                    </div>
+                    ${dishRowsHTML}
+                </div>
+                <div class="quantity-controls">
+                    <button type="button" class="btn-reset-quantities" onclick="resetEditQuantities()">🔄 重置所有數量</button>
+                </div>
+            </div>
+            
+            <div class="form-group">
+                <div class="total-section">
+                    <h3>訂單總金額：NT$ <span id="editOrderTotal">${order.total.toLocaleString()}</span></h3>
+                </div>
+            </div>
+            
+            <div class="form-actions">
+                <button type="submit" class="btn-primary">更新訂單</button>
+                <button type="button" class="btn-secondary" onclick="closeEditModal()">取消</button>
+            </div>
+        </form>
+    `;
+
+  document.getElementById("editFormContainer").innerHTML = modalContent;
+  document.getElementById("editModal").style.display = "block";
+
+  // 設置編輯表單事件監聽
+  document
+    .getElementById("editOrderForm")
+    .addEventListener("submit", function (e) {
+      handleEditSubmit(e, orderId);
+    });
+}
+
+// 重置編輯模式的數量
+function resetEditQuantities() {
+  showConfirm("確定要重置所有菜品數量嗎？", () => {
+    document
+      .querySelectorAll("#editFormContainer .quantity-box")
+      .forEach((box) => {
+        const display = box.querySelector(".quantity-display");
+        display.textContent = "0";
+        box.classList.remove("has-value");
+      });
+
+    document
+      .querySelectorAll("#editFormContainer .dish-input-row")
+      .forEach((row) => {
+        updateRowSubtotal(row);
+      });
+
+    calculateEditTotal();
+  });
+}
+
+// 計算編輯模式的總金額
+function calculateEditTotal() {
+  let total = 0;
+  document
+    .querySelectorAll("#editFormContainer .dish-input-row")
+    .forEach((row) => {
+      const price = parseInt(row.getAttribute("data-price"));
+      const quantityBox = row.querySelector(".quantity-box");
+      const quantity =
+        parseInt(quantityBox.querySelector(".quantity-display").textContent) ||
+        0;
+      total += price * quantity;
+    });
+  document.getElementById("editOrderTotal").textContent =
+    total.toLocaleString();
+}
+
+// 處理編輯表單提交
+function handleEditSubmit(e, orderId) {
+  e.preventDefault();
+
+  const orderIndex = orders.findIndex((o) => o.id === orderId);
+  if (orderIndex === -1) return;
+
+  const editOrderNumber = document
+    .getElementById("editOrderNumber")
+    .value.trim();
+
+  // 檢查訂單號碼是否與其他訂單重複（排除自己）
+  const isDuplicate = orders.some(
+    (order, index) =>
+      index !== orderIndex && order.orderNumber === editOrderNumber
+  );
+  if (isDuplicate) {
+    showAlert("此訂單號碼已存在，請使用不同的號碼！", "error");
+    return;
+  }
+
+  const customerData = {
+    name: document.getElementById("editCustomerName").value,
+    phone: document.getElementById("editCustomerPhone").value,
+    group: document.getElementById("editCustomerGroup").value,
+    note: document.getElementById("editCustomerNote").value,
+  };
+
+  const dishQuantities = {};
+  let hasOrder = false;
+
+  document
+    .querySelectorAll("#editFormContainer .dish-input-row")
+    .forEach((row) => {
+      const dishName = row.getAttribute("data-name");
+      const quantityBox = row.querySelector(".quantity-box");
+      const quantity =
+        parseInt(quantityBox.querySelector(".quantity-display").textContent) ||
+        0;
+      dishQuantities[dishName] = quantity;
+      if (quantity > 0) hasOrder = true;
+    });
+
+  if (!hasOrder) {
+    showAlert("請至少訂購一個菜品（數量 > 0）", "error");
+    return;
+  }
+
+  let total = 0;
+  DISHES.forEach((dish) => {
+    const qty = dishQuantities[dish.name] || 0;
+    total += dish.price * qty;
+  });
+
+  orders[orderIndex] = {
+    ...orders[orderIndex],
+    orderNumber: editOrderNumber,
+    customer: customerData,
+    dishQuantities: dishQuantities,
+    total: total,
+  };
+
+  saveOrders();
+  loadOrders();
+  updateStatistics();
+  closeEditModal();
+
+  showAlert("訂單已成功更新！", "success");
+}
+
+// 關閉編輯Modal
+function closeEditModal() {
+  document.getElementById("editModal").style.display = "none";
+}
+
+// 刪除訂單
+function deleteOrder(orderId) {
+  showConfirm("確定要刪除此訂單嗎？", () => {
+    orders = orders.filter((o) => o.id !== orderId);
+    saveOrders();
+    loadOrders();
+    updateStatistics();
+
+    showAlert("訂單已刪除", "success");
+  });
+}
+
+// 搜尋訂單
+function searchOrders() {
+  const searchTerm = document.getElementById("searchInput").value.toLowerCase();
+  const groupFilter = document.getElementById("groupFilter").value;
+
+  // 重置到第一頁
+  currentPage = 1;
+
+  // 應用篩選條件到全局 filteredOrders
+  filteredOrders = [...orders];
+
+  // 群組篩選
+  if (groupFilter) {
+    filteredOrders = filteredOrders.filter(
+      (order) => order.customer.group === groupFilter
+    );
+  }
+
+  // 關鍵字搜尋
+  if (searchTerm) {
+    filteredOrders = filteredOrders.filter((order) => {
+      return (
+        (order.orderNumber &&
+          order.orderNumber.toLowerCase().includes(searchTerm)) ||
+        order.customer.name.toLowerCase().includes(searchTerm) ||
+        order.customer.phone.includes(searchTerm) ||
+        (order.customer.group &&
+          order.customer.group.toLowerCase().includes(searchTerm)) ||
+        DISHES.some(
+          (dish) =>
+            dish.name.toLowerCase().includes(searchTerm) &&
+            order.dishQuantities &&
+            order.dishQuantities[dish.name] > 0
+        )
+      );
+    });
+  }
+
+  // 使用表格版本的 loadOrders 重新渲染
+  loadOrders();
+}
+
+// 清除搜尋
+function clearSearch() {
+  document.getElementById("searchInput").value = "";
+  document.getElementById("groupFilter").value = "";
+  currentPage = 1;
+  loadOrders();
+}
+
+// 更新統計資料
+function updateStatistics() {
+  // 總訂單數
+  document.getElementById("totalOrders").textContent = orders.length;
+
+  // 總金額
+  const totalRevenue = orders.reduce((sum, order) => sum + order.total, 0);
+  document.getElementById("totalRevenue").textContent =
+    "NT$ " + totalRevenue.toLocaleString();
+
+  // 熱門菜品
+  const dishCount = {};
+  orders.forEach((order) => {
+    if (!order.dishQuantities) return;
+    DISHES.forEach((dish) => {
+      const qty = order.dishQuantities[dish.name] || 0;
+      dishCount[dish.name] = (dishCount[dish.name] || 0) + qty;
+    });
+  });
+
+  let popularDish = "-";
+  let maxCount = 0;
+  for (const [dish, count] of Object.entries(dishCount)) {
+    if (count > maxCount) {
+      maxCount = count;
+      popularDish = `${dish} (${count})`;
+    }
+  }
+  document.getElementById("popularDish").textContent = popularDish;
+}
+
+// 匯入 Excel
+function importFromExcel(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+
+  const reader = new FileReader();
+
+  reader.onload = function (e) {
+    try {
+      const data = new Uint8Array(e.target.result);
+      const workbook = XLSX.read(data, { type: "array" });
+
+      // 讀取第一個工作表
+      const worksheet = workbook.Sheets[workbook.SheetNames[0]];
+      const jsonData = XLSX.utils.sheet_to_json(worksheet);
+
+      if (jsonData.length === 0) {
+        showAlert("Excel 檔案中沒有資料", "warning");
+        return;
+      }
+
+      let importedCount = 0;
+      let skippedCount = 0;
+
+      jsonData.forEach((row, index) => {
+        // 跳過統計列
+        if (row["訂購人"] === "【統計】") {
+          return;
+        }
+
+        // 驗證必要欄位
+        if (!row["訂購人"] || !row["聯絡電話"]) {
+          skippedCount++;
+          return;
+        }
+
+        // 收集菜品數量
+        const dishQuantities = {};
+        let hasOrder = false;
+
+        DISHES.forEach((dish) => {
+          const qty = parseInt(row[dish.name]) || 0;
+          dishQuantities[dish.name] = qty;
+          if (qty > 0) hasOrder = true;
+        });
+
+        // 如果沒有訂購任何菜品，跳過此筆
+        if (!hasOrder) {
+          skippedCount++;
+          return;
+        }
+
+        // 計算總金額
+        let total = 0;
+        DISHES.forEach((dish) => {
+          const qty = dishQuantities[dish.name] || 0;
+          total += dish.price * qty;
+        });
+
+        // 建立訂單物件
+        const order = {
+          id: Date.now() + index, // 確保唯一ID
+          orderNumber: row["訂單號碼"]
+            ? row["訂單號碼"].toString()
+            : (Date.now() + index).toString(),
+          customer: {
+            name: row["訂購人"].toString(),
+            phone: row["聯絡電話"].toString(),
+            group: row["所屬群組"] || "未分組",
+            note: row["備註"] || "",
+          },
+          dishQuantities: dishQuantities,
+          total: total,
+          createdAt: new Date().toISOString(),
+        };
+
+        // 檢查是否已存在相同訂單（根據姓名和電話）
+        const existingIndex = orders.findIndex(
+          (o) =>
+            o.customer.name === order.customer.name &&
+            o.customer.phone === order.customer.phone
+        );
+
+        if (existingIndex >= 0) {
+          // 詢問是否要覆蓋
+          // 自動覆蓋模式（批次匯入時不詢問）
+          orders[existingIndex] = order;
+        } else {
+          orders.unshift(order);
+        }
+
+        importedCount++;
+      });
+
+      // 儲存並更新
+      saveOrders();
+      loadOrders();
+      updateStatistics();
+
+      // 清除 file input
+      event.target.value = "";
+
+      showAlert(
+        `匯入完成！\n成功匯入：${importedCount} 筆\n跳過：${skippedCount} 筆`,
+        "success"
+      );
+    } catch (error) {
+      console.error("匯入錯誤：", error);
+      showAlert("匯入失敗，請確認檔案格式是否正確", "error");
+    }
+  };
+
+  reader.onerror = function () {
+    showAlert("檔案讀取失敗", "error");
+  };
+
+  reader.readAsArrayBuffer(file);
+}
+
+// 匯出 Excel - 橫向格式，菜品在標題列
+function exportToExcel() {
+  if (orders.length === 0) {
+    showAlert("目前沒有訂單可以匯出", "warning");
+    return;
+  }
+
+  // 準備標題列
+  const headers = ["訂單號碼", "訂購人", "聯絡電話", "所屬群組", "備註"];
+  DISHES.forEach((dish) => {
+    headers.push(dish.name);
+  });
+  headers.push("訂購總金額");
+
+  // 準備資料列
+  const excelData = [];
+
+  orders.forEach((order) => {
+    if (!order.dishQuantities) return;
+    const row = {
+      訂單號碼: order.orderNumber || order.id,
+      訂購人: order.customer.name,
+      聯絡電話: order.customer.phone,
+      所屬群組: order.customer.group || "未分組",
+      備註: order.customer.note || "-",
+    };
+
+    DISHES.forEach((dish) => {
+      row[dish.name] = order.dishQuantities[dish.name] || 0;
+    });
+
+    row["訂購總金額"] = order.total;
+
+    excelData.push(row);
+  });
+
+  // 新增統計列
+  const statsRow = {
+    訂單號碼: "",
+    訂購人: "【統計】",
+    聯絡電話: "",
+    所屬群組: "",
+    備註: "",
+  };
+
+  // 計算每個菜品的總數量
+  DISHES.forEach((dish) => {
+    const totalQty = orders.reduce((sum, order) => {
+      if (!order.dishQuantities) return sum;
+      return sum + (order.dishQuantities[dish.name] || 0);
+    }, 0);
+    statsRow[dish.name] = totalQty;
+  });
+
+  // 計算所有訂單的總金額
+  const grandTotal = orders.reduce((sum, order) => {
+    if (!order.total) return sum;
+    return sum + order.total;
+  }, 0);
+
+  statsRow["訂購總金額"] = grandTotal;
+  excelData.push(statsRow);
+
+  // 建立工作簿
+  const ws = XLSX.utils.json_to_sheet(excelData, { header: headers });
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "年菜訂單");
+
+  // 設定欄位寬度
+  const colWidths = [
+    { wch: 15 }, // 訂單號碼
+    { wch: 12 }, // 訂購人
+    { wch: 12 }, // 聯絡電話
+    { wch: 12 }, // 所屬群組
+    { wch: 20 }, // 備註
+  ];
+  DISHES.forEach(() => colWidths.push({ wch: 10 })); // 各菜品
+  colWidths.push({ wch: 12 }); // 訂購總金額
+  ws["!cols"] = colWidths;
+
+  // 下載檔案
+  const fileName = `年菜訂單_${new Date().toISOString().split("T")[0]}.xlsx`;
+  XLSX.writeFile(wb, fileName);
+
+  showAlert("Excel 檔案已成功匯出！", "success");
+}
+
+// 匯出 PDF - 使用 html2canvas 支援中文
+async function exportToPDF() {
+  if (orders.length === 0) {
+    showAlert("目前沒有訂單可以匯出", "warning");
+    return;
+  }
+
+  try {
+    // 訂單按編號排序（由小到大）
+    const sortedOrders = [...orders].sort((a, b) => {
+      const numA = parseInt((a.orderNumber || a.id).toString().replace(/\D/g, '')) || 0;
+      const numB = parseInt((b.orderNumber || b.id).toString().replace(/\D/g, '')) || 0;
+      return numA - numB;
+    });
+
+    // 計算統計資料
+    const grandTotal = sortedOrders.reduce((sum, order) => sum + (order.total || 0), 0);
+    
+    // 各群組統計
+    const groupStats = {};
+    sortedOrders.forEach(order => {
+      const group = order.customer.group || "未分組";
+      if (!groupStats[group]) {
+        groupStats[group] = { count: 0, total: 0 };
+      }
+      groupStats[group].count++;
+      groupStats[group].total += order.total || 0;
+    });
+    
+    // 各菜品統計
+    const dishStats = {};
+    DISHES.forEach((dish) => {
+      const totalQty = sortedOrders.reduce((sum, order) => {
+        if (!order.dishQuantities) return sum;
+        return sum + (order.dishQuantities[dish.name] || 0);
+      }, 0);
+      if (totalQty > 0) {
+        dishStats[dish.name] = { qty: totalQty, price: dish.price };
+      }
+    });
+
+    // ==================== 創建第一頁：統計摘要 ====================
+    const summaryDiv = document.createElement("div");
+    summaryDiv.style.cssText = "width: 210mm; height: 297mm; padding: 15mm 20mm; background: white; font-family: 'Microsoft JhengHei', Arial, sans-serif; box-sizing: border-box; display: flex; flex-direction: column;";
+    
+    let summaryHTML = `
+      <div style="text-align: center; margin-bottom: 20px;">
+        <h1 style="color: #e74c3c; font-size: 24px; margin: 0 0 8px 0;">🧧 新年年菜訂單統計報表 🧧</h1>
+        <p style="font-size: 12px; color: #666; margin: 0;">匯出日期：${new Date().toLocaleDateString("zh-TW")}</p>
+      </div>
+      
+      <div style="margin-bottom: 18px;">
+        <h2 style="color: #e74c3c; font-size: 16px; margin: 0 0 12px 0; border-bottom: 2px solid #e74c3c; padding-bottom: 6px;">【基本統計】</h2>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+          <div style="background: #fff3e6; padding: 15px; border-radius: 8px; text-align: center;">
+            <div style="font-size: 12px; color: #666; margin-bottom: 6px;">總訂單數</div>
+            <div style="font-size: 28px; font-weight: bold; color: #e74c3c;">${sortedOrders.length} 筆</div>
+          </div>
+          <div style="background: #e8f8f5; padding: 15px; border-radius: 8px; text-align: center;">
+            <div style="font-size: 12px; color: #666; margin-bottom: 6px;">總金額</div>
+            <div style="font-size: 28px; font-weight: bold; color: #27ae60;">NT$ ${grandTotal.toLocaleString()}</div>
+          </div>
+        </div>
+      </div>
+      
+      <div style="margin-bottom: 18px;">
+        <h2 style="color: #e74c3c; font-size: 16px; margin: 0 0 12px 0; border-bottom: 2px solid #e74c3c; padding-bottom: 6px;">【各群組訂購統計】</h2>
+        <table style="width: 100%; border-collapse: collapse;">
+          <thead>
+            <tr style="background: #e74c3c; color: white;">
+              <th style="padding: 10px; text-align: left; font-size: 13px;">群組名稱</th>
+              <th style="padding: 10px; text-align: center; font-size: 13px;">訂單數量</th>
+              <th style="padding: 10px; text-align: right; font-size: 13px;">金額小計</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${Object.entries(groupStats).map(([group, stats]) => `
+              <tr style="border-bottom: 1px solid #ddd;">
+                <td style="padding: 8px; font-size: 12px;">${group}</td>
+                <td style="padding: 8px; text-align: center; font-size: 12px;">${stats.count} 筆</td>
+                <td style="padding: 8px; text-align: right; font-size: 12px; color: #27ae60; font-weight: bold;">NT$ ${stats.total.toLocaleString()}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </div>
+      
+      <div style="flex: 1; overflow: hidden;">
+        <h2 style="color: #e74c3c; font-size: 16px; margin: 0 0 12px 0; border-bottom: 2px solid #e74c3c; padding-bottom: 6px;">【各菜品訂購統計】</h2>
+        <div style="max-height: 100%; overflow: hidden;">
+          <table style="width: 100%; border-collapse: collapse;">
+            <thead>
+              <tr style="background: #e74c3c; color: white;">
+                <th style="padding: 10px; text-align: left; font-size: 13px;">菜品名稱</th>
+                <th style="padding: 10px; text-align: center; font-size: 13px;">訂購數量</th>
+                <th style="padding: 10px; text-align: right; font-size: 13px;">單價</th>
+                <th style="padding: 10px; text-align: right; font-size: 13px;">小計金額</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${Object.entries(dishStats).map(([dish, data]) => {
+                const subtotal = data.qty * data.price;
+                return `
+                  <tr style="border-bottom: 1px solid #ddd;">
+                    <td style="padding: 8px; font-size: 12px;">${dish}</td>
+                    <td style="padding: 8px; text-align: center; font-size: 12px; font-weight: bold;">${data.qty} 份</td>
+                    <td style="padding: 8px; text-align: right; font-size: 12px;">NT$ ${data.price.toLocaleString()}</td>
+                    <td style="padding: 8px; text-align: right; font-size: 12px; color: #27ae60; font-weight: bold;">NT$ ${subtotal.toLocaleString()}</td>
+                  </tr>
+                `;
+              }).join('')}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    `;
+    
+    summaryDiv.innerHTML = summaryHTML;
+    document.body.appendChild(summaryDiv);
+
+    // ==================== 創建後續頁：訂單明細（Excel格式）====================
+    const ordersDiv = document.createElement("div");
+    ordersDiv.style.cssText = "width: 297mm; height: 210mm; padding: 10mm 15mm; background: white; font-family: 'Microsoft JhengHei', Arial, sans-serif; box-sizing: border-box;";
+    
+    // 計算欄位數量和寬度
+    const dishCount = DISHES.length;
+    const baseColumns = 5; // 序號、訂單號碼、訂購人、電話、群組
+    const totalColumns = baseColumns + dishCount + 1; // +1 是總金額
+    
+    let ordersHTML = `
+      <div style="text-align: center; margin-bottom: 12px;">
+        <h1 style="color: #e74c3c; font-size: 22px; margin: 0 0 5px 0;">訂單明細</h1>
+        <p style="font-size: 11px; color: #666; margin: 0;">共 ${sortedOrders.length} 筆訂單</p>
+      </div>
+      
+      <table style="width: 100%; border-collapse: collapse; font-size: 10px;">
+        <thead>
+          <tr style="background: #e74c3c; color: white;">
+            <th style="padding: 8px 4px; text-align: center; border: 1px solid #c0392b; font-size: 11px;">序號</th>
+            <th style="padding: 8px 5px; text-align: left; border: 1px solid #c0392b; font-size: 11px;">訂單號碼</th>
+            <th style="padding: 8px 5px; text-align: left; border: 1px solid #c0392b; font-size: 11px;">訂購人</th>
+            <th style="padding: 8px 5px; text-align: left; border: 1px solid #c0392b; font-size: 11px;">電話</th>
+            <th style="padding: 8px 5px; text-align: left; border: 1px solid #c0392b; font-size: 11px;">群組</th>
+    `;
+    
+    // 動態生成菜品欄位標題
+    DISHES.forEach(dish => {
+      ordersHTML += `<th style="padding: 8px 4px; text-align: center; border: 1px solid #c0392b; font-size: 10px;">${dish.name}</th>`;
+    });
+    
+    ordersHTML += `
+            <th style="padding: 8px 5px; text-align: right; border: 1px solid #c0392b; font-size: 11px;">總金額</th>
+          </tr>
+        </thead>
+        <tbody>
+    `;
+    
+    // 生成訂單資料列
+    sortedOrders.forEach((order, index) => {
+      if (!order.dishQuantities) return;
+      
+      const rowStyle = index % 2 === 0 ? 'background: #f9f9f9;' : 'background: white;';
+      
+      ordersHTML += `
+        <tr style="${rowStyle}">
+          <td style="padding: 6px 4px; text-align: center; border: 1px solid #ddd; font-size: 10px;">${index + 1}</td>
+          <td style="padding: 6px 5px; border: 1px solid #ddd; font-size: 10px;">${order.orderNumber || order.id}</td>
+          <td style="padding: 6px 5px; border: 1px solid #ddd; font-size: 10px;">${order.customer.name}</td>
+          <td style="padding: 6px 5px; border: 1px solid #ddd; font-size: 9px;">${order.customer.phone}</td>
+          <td style="padding: 6px 5px; border: 1px solid #ddd; font-size: 9px;">${order.customer.group || "未分組"}</td>
+      `;
+      
+      // 填入各菜品的訂購數量
+      DISHES.forEach(dish => {
+        const qty = order.dishQuantities[dish.name] || 0;
+        const cellStyle = qty > 0 ? 'font-weight: bold; color: #e74c3c;' : 'color: #999;';
+        ordersHTML += `<td style="padding: 6px 4px; text-align: center; border: 1px solid #ddd; font-size: 11px; ${cellStyle}">${qty > 0 ? qty : '-'}</td>`;
+      });
+      
+      ordersHTML += `
+          <td style="padding: 6px 5px; text-align: right; border: 1px solid #ddd; font-weight: bold; color: #27ae60; font-size: 10px;">NT$ ${order.total.toLocaleString()}</td>
+        </tr>
+      `;
+    });
+    
+    // 統計列
+    ordersHTML += `
+        <tr style="background: #fff3cd; font-weight: bold;">
+          <td colspan="2" style="padding: 8px 5px; text-align: center; border: 1px solid #ddd; color: #e74c3c; font-size: 11px;">【統計】</td>
+          <td colspan="3" style="padding: 8px 5px; border: 1px solid #ddd;"></td>
+    `;
+    
+    // 計算各菜品總數量
+    DISHES.forEach(dish => {
+      const totalQty = sortedOrders.reduce((sum, order) => {
+        if (!order.dishQuantities) return sum;
+        return sum + (order.dishQuantities[dish.name] || 0);
+      }, 0);
+      ordersHTML += `<td style="padding: 8px 4px; text-align: center; border: 1px solid #ddd; color: #e74c3c; font-size: 11px;">${totalQty > 0 ? totalQty : '-'}</td>`;
+    });
+    
+    ordersHTML += `
+          <td style="padding: 8px 5px; text-align: right; border: 1px solid #ddd; color: #27ae60; font-size: 11px;">NT$ ${grandTotal.toLocaleString()}</td>
+        </tr>
+        </tbody>
+      </table>
+    `;
+    
+    ordersDiv.innerHTML = ordersHTML;
+    document.body.appendChild(ordersDiv);
+
+    // ==================== 轉換為 PDF ====================
+    const { jsPDF } = window.jspdf;
+    const pdf = new jsPDF("p", "mm", "a4"); // 第一頁直向（統計摘要）
+
+    // 第一頁：統計摘要（直向）
+    const summaryCanvas = await html2canvas(summaryDiv, {
+      scale: 2,
+      useCORS: true,
+      logging: false,
+      backgroundColor: "#ffffff",
+    });
+    
+    const summaryImgData = summaryCanvas.toDataURL("image/png");
+    const imgWidth = 210;
+    const imgHeight = (summaryCanvas.height * imgWidth) / summaryCanvas.width;
+    pdf.addImage(summaryImgData, "PNG", 0, 0, imgWidth, imgHeight);
+
+    // 後續頁：訂單明細（橫向）
+    const ordersCanvas = await html2canvas(ordersDiv, {
+      scale: 2,
+      useCORS: true,
+      logging: false,
+      backgroundColor: "#ffffff",
+    });
+    
+    const ordersImgData = ordersCanvas.toDataURL("image/png");
+    
+    // 新增橫向頁面
+    pdf.addPage("a4", "landscape");
+    const landscapeWidth = 297; // A4 橫向寬度
+    const landscapeHeight = 210; // A4 橫向高度
+    const ordersImgHeight = (ordersCanvas.height * landscapeWidth) / ordersCanvas.width;
+    
+    let heightLeft = ordersImgHeight;
+    let position = 0;
+    
+    pdf.addImage(ordersImgData, "PNG", 0, position, landscapeWidth, ordersImgHeight);
+    heightLeft -= landscapeHeight;
+    
+    // 如果需要更多頁面
+    while (heightLeft > 0) {
+      position = heightLeft - ordersImgHeight;
+      pdf.addPage("a4", "landscape");
+      pdf.addImage(ordersImgData, "PNG", 0, position, landscapeWidth, ordersImgHeight);
+      heightLeft -= landscapeHeight;
+    }
+
+    // 下載 PDF
+    const fileName = `年菜訂單_${new Date().toISOString().split("T")[0]}.pdf`;
+    pdf.save(fileName);
+
+    showAlert("PDF 檔案已成功匯出！", "success");
+    
+    // 清理臨時元素
+    document.body.removeChild(summaryDiv);
+    document.body.removeChild(ordersDiv);
+    
+  } catch (error) {
+    console.error("PDF 匯出失敗:", error);
+    showAlert(`PDF 匯出失敗：${error.message}`, "error");
+  }
+}
+
+// Modal點擊外部關閉
+window.onclick = function (event) {
+  const editModal = document.getElementById("editModal");
+  const addDishModal = document.getElementById("addDishModal");
+  if (event.target === editModal) {
+    closeEditModal();
+  }
+  if (event.target === addDishModal) {
+    closeAddDishModal();
+  }
+};
+
+// ==================== 菜品管理功能 ====================
+
+// 顯示新增菜品 Modal
+function showAddDishModal() {
+  document.getElementById("addDishModal").style.display = "block";
+  document.getElementById("addDishForm").reset();
+}
+
+// 關閉新增菜品 Modal
+function closeAddDishModal() {
+  document.getElementById("addDishModal").style.display = "none";
+}
+
+// 處理新增菜品
+function handleAddDish(event) {
+  event.preventDefault();
+
+  const name = document.getElementById("newDishName").value.trim();
+  const price = parseInt(document.getElementById("newDishPrice").value);
+
+  // 檢查菜品名稱是否重複
+  if (DISHES.some((dish) => dish.name === name)) {
+    showAlert("此菜品名稱已存在！", "error");
+    return;
+  }
+
+  // 新增菜品
+  DISHES.push({ name, price });
+  saveDishes();
+
+  // 重新渲染菜品列表
+  renderDishesInForm();
+  renderDishManagementList();
+
+  closeAddDishModal();
+  showAlert("菜品新增成功！", "success");
+}
+
+// 刪除菜品
+function deleteDish(dishName) {
+  showConfirm(`確定要刪除「${dishName}」嗎？`, () => {
+    // 檢查是否有訂單使用此菜品
+    const hasOrders = orders.some(
+      (order) => order.dishQuantities && order.dishQuantities[dishName] > 0
+    );
+
+    if (hasOrders) {
+      showAlert("此菜品已有訂單使用，無法刪除！", "warning");
+      return;
+    }
+
+    // 刪除菜品
+    DISHES = DISHES.filter((dish) => dish.name !== dishName);
+    saveDishes();
+
+    // 重新渲染
+    renderDishesInForm();
+    renderDishManagementList();
+
+    showAlert("菜品已刪除！", "success");
+  });
+}
+
+// 渲染表單中的菜品列表
+function renderDishesInForm() {
+  // 明確選擇訂購表單中的 dishes-table（不是菜品管理區的）
+  const form = document.getElementById("orderForm");
+  if (!form) {
+    console.error("找不到訂單表單");
+    return;
+  }
+
+  const container = form.querySelector(".dishes-table");
+  if (!container) {
+    console.error("找不到訂單表單中的 .dishes-table 容器");
+    return;
+  }
+
+  console.log("開始渲染菜品到訂單表單，共", DISHES.length, "個菜品");
+
+  // 保留表頭
+  const header = container.querySelector(".dishes-header");
+  if (!header) {
+    console.error("找不到 .dishes-header");
+    return;
+  }
+
+  // 先儲存表頭的 HTML
+  const headerHTML = header.outerHTML;
+
+  // 清空容器
+  container.innerHTML = headerHTML;
+
+  // 渲染菜品
+  DISHES.forEach((dish) => {
+    const row = document.createElement("div");
+    row.className = "dish-input-row";
+    row.setAttribute("data-name", dish.name);
+    row.setAttribute("data-price", dish.price);
+    row.innerHTML = `
+            <div class="dish-name">${dish.name}</div>
+            <div class="dish-price">NT$ ${dish.price}</div>
+            <div class="quantity-box" onclick="incrementQuantity(this)">
+                <span class="quantity-display">0</span>
+            </div>
+            <div class="dish-subtotal">NT$ 0</div>
+            <button type="button" class="btn-reset-dish" onclick="resetDishQuantity(this)" title="重置此菜品數量">🔄</button>
+        `;
+    container.appendChild(row);
+  });
+
+  console.log(
+    "菜品渲染完成，容器內現在有",
+    container.children.length,
+    "個元素"
+  );
+}
+
+// 渲染菜品管理列表
+function renderDishManagementList() {
+  const container = document.getElementById("manageDishList");
+  if (!container) return;
+
+  container.innerHTML = "";
+
+  if (DISHES.length === 0) {
+    container.innerHTML =
+      '<div style="padding: 20px; text-align: center; color: #999;">尚無菜品</div>';
+    return;
+  }
+
+  DISHES.forEach((dish) => {
+    const row = document.createElement("div");
+    row.className = "dish-input-row";
+    row.innerHTML = `
+            <div class="dish-name">${dish.name}</div>
+            <div class="dish-price">NT$ ${dish.price}</div>
+            <button type="button" class="btn-delete" onclick="deleteDish('${dish.name}')">🗑️ 刪除</button>
+        `;
+    container.appendChild(row);
+  });
+}
+
+// 切換菜品列表顯示
+function toggleDishList() {
+  const container = document.getElementById("dishListContainer");
+  if (container.style.display === "none") {
+    container.style.display = "block";
+    renderDishManagementList();
+  } else {
+    container.style.display = "none";
+  }
+}
