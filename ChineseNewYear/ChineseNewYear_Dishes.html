@@ -328,6 +328,82 @@
       </div>
     </div>
 
+    <!-- 重複訂單處理Modal -->
+    <div id="duplicateOrderModal" class="modal">
+      <div class="modal-content modal-large">
+        <div class="modal-header">
+          <h2>⚠️ 發現重複訂單</h2>
+          <span class="duplicate-info" id="duplicateInfo"></span>
+        </div>
+        <div class="duplicate-comparison">
+          <div class="comparison-column">
+            <h3>📋 現有訂單</h3>
+            <div id="existingOrderDetail" class="order-detail-box"></div>
+          </div>
+          <div class="comparison-divider">
+            <div class="arrow">→</div>
+          </div>
+          <div class="comparison-column">
+            <h3>📥 匯入訂單</h3>
+            <div id="importOrderDetail" class="order-detail-box"></div>
+          </div>
+        </div>
+        <div class="modal-actions">
+          <button
+            type="button"
+            class="btn-secondary"
+            onclick="handleDuplicateOrder('skip')"
+          >
+            ❌ 跳過此筆
+          </button>
+          <button
+            type="button"
+            class="btn-warning"
+            onclick="handleDuplicateOrder('update')"
+          >
+            🔄 更新覆蓋
+          </button>
+          <button
+            type="button"
+            class="btn-primary"
+            onclick="showCustomOrderNumberInput()"
+          >
+            ➕ 強制加入（自訂序號）
+          </button>
+        </div>
+        <div id="customOrderNumberSection" class="custom-order-number-section" style="display: none;">
+          <div class="input-group">
+            <label for="customOrderNumber">請輸入新的訂單號碼：</label>
+            <input 
+              type="text" 
+              id="customOrderNumber" 
+              placeholder="例如：001-A 或 #001_副本"
+              class="custom-order-input"
+            />
+          </div>
+          <div class="input-actions">
+            <button
+              type="button"
+              class="btn-secondary-sm"
+              onclick="hideCustomOrderNumberInput()"
+            >
+              取消
+            </button>
+            <button
+              type="button"
+              class="btn-success-sm"
+              onclick="confirmCustomOrderNumber()"
+            >
+              確認加入
+            </button>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <span id="duplicateProgress"></span>
+        </div>
+      </div>
+    </div>
+
     <!-- 自訂提示窗 -->
     <div id="customAlert" class="custom-alert-overlay">
       <div class="custom-alert-box">

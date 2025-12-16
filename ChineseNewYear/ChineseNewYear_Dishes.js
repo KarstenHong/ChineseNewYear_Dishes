@@ -143,6 +143,11 @@ function closeAlert() {
 document.addEventListener("DOMContentLoaded", function () {
   console.log("頁面載入完成");
   console.log("DISHES 陣列:", DISHES);
+  console.log("orders 陣列長度:", orders.length);
+  
+  // 先初始化 filteredOrders（必須在 loadOrders() 之前）
+  filteredOrders = [...orders];
+  
   renderDishesInForm(); // 渲染菜品列表
   loadOrders();
   updateStatistics();
@@ -166,6 +171,17 @@ function setupEventListeners() {
   document
     .getElementById("groupFilter")
     .addEventListener("change", searchOrders);
+  
+  // 離開頁面前的提醒
+  window.addEventListener("beforeunload", function (e) {
+    // 只有當有訂單資料時才提醒
+    if (orders.length > 0) {
+      const message = "您有訂單資料尚未匯出備份，確定要離開嗎？";
+      e.preventDefault();
+      e.returnValue = message; // Chrome 需要設定 returnValue
+      return message; // 其他瀏覽器
+    }
+  });
 }
 
 // 增加數量（點擊數量框）
@@ -374,6 +390,7 @@ function handleFormSubmit(e) {
   saveOrders();
   console.log("已呼叫 saveOrders()");
 
+  filteredOrders = [...orders]; // 重置為全部訂單
   loadOrders();
   updateStatistics();
   resetForm();
@@ -413,8 +430,32 @@ function saveOrders() {
 function loadOrders() {
   const tbody = document.getElementById("ordersTableBody");
 
-  // 使用當前的過濾/排序結果
-  filteredOrders = [...orders];
+  // 確保 filteredOrders 有值（僅在未初始化時設定）
+  if (!Array.isArray(filteredOrders)) {
+    filteredOrders = [...orders];
+  }
+  
+  // 訂單號碼排序（由小到大）
+  filteredOrders.sort((a, b) => {
+    const numA = a.orderNumber || a.id.toString();
+    const numB = b.orderNumber || b.id.toString();
+    
+    // 嘗試轉換成數字比較
+    const parseNum = (str) => {
+      const num = parseInt(str.replace(/\D/g, ''));
+      return isNaN(num) ? 0 : num;
+    };
+    
+    const valA = parseNum(numA);
+    const valB = parseNum(numB);
+    
+    if (valA !== valB) {
+      return valA - valB;
+    }
+    
+    // 如果數字相同，用字串比較
+    return numA.localeCompare(numB);
+  });
 
   // 如果沒有訂單
   if (filteredOrders.length === 0) {
@@ -820,6 +861,7 @@ function handleEditSubmit(e, orderId) {
   };
 
   saveOrders();
+  filteredOrders = [...orders]; // 重置為全部訂單
   loadOrders();
   updateStatistics();
   closeEditModal();
@@ -837,6 +879,7 @@ function deleteOrder(orderId) {
   showConfirm("確定要刪除此訂單嗎？", () => {
     orders = orders.filter((o) => o.id !== orderId);
     saveOrders();
+    filteredOrders = [...orders]; // 重置為全部訂單
     loadOrders();
     updateStatistics();
 
@@ -862,7 +905,7 @@ function searchOrders() {
     );
   }
 
-  // 關鍵字搜尋
+  // 關鍵字搜尋（只在有輸入搜尋詞時才進行）
   if (searchTerm) {
     filteredOrders = filteredOrders.filter((order) => {
       return (
@@ -882,6 +925,14 @@ function searchOrders() {
     });
   }
 
+  // 顯示搜尋結果提示
+  if (groupFilter || searchTerm) {
+    const filterInfo = [];
+    if (groupFilter) filterInfo.push(`群組: ${groupFilter}`);
+    if (searchTerm) filterInfo.push(`關鍵字: ${searchTerm}`);
+    console.log(`🔍 搜尋條件：${filterInfo.join(', ')} | 結果：${filteredOrders.length} 筆`);
+  }
+
   // 使用表格版本的 loadOrders 重新渲染
   loadOrders();
 }
@@ -891,6 +942,8 @@ function clearSearch() {
   document.getElementById("searchInput").value = "";
   document.getElementById("groupFilter").value = "";
   currentPage = 1;
+  // 重置 filteredOrders 為全部訂單
+  filteredOrders = [...orders];
   loadOrders();
 }
 
@@ -946,7 +999,8 @@ function importFromExcel(event) {
         return;
       }
 
-      let importedCount = 0;
+      // 準備待處理的訂單陣列
+      const pendingOrders = [];
       let skippedCount = 0;
 
       jsonData.forEach((row, index) => {
@@ -984,12 +1038,15 @@ function importFromExcel(event) {
           total += dish.price * qty;
         });
 
+        // 取得匯入的訂單號碼
+        const importOrderNumber = row["訂單號碼"]
+          ? row["訂單號碼"].toString()
+          : "";
+
         // 建立訂單物件
         const order = {
-          id: Date.now() + index, // 確保唯一ID
-          orderNumber: row["訂單號碼"]
-            ? row["訂單號碼"].toString()
-            : (Date.now() + index).toString(),
+          id: Date.now() + index,
+          orderNumber: importOrderNumber || (Date.now() + index).toString(),
           customer: {
             name: row["訂購人"].toString(),
             phone: row["聯絡電話"].toString(),
@@ -1001,36 +1058,14 @@ function importFromExcel(event) {
           createdAt: new Date().toISOString(),
         };
 
-        // 檢查是否已存在相同訂單（根據姓名和電話）
-        const existingIndex = orders.findIndex(
-          (o) =>
-            o.customer.name === order.customer.name &&
-            o.customer.phone === order.customer.phone
-        );
-
-        if (existingIndex >= 0) {
-          // 詢問是否要覆蓋
-          // 自動覆蓋模式（批次匯入時不詢問）
-          orders[existingIndex] = order;
-        } else {
-          orders.unshift(order);
-        }
-
-        importedCount++;
+        pendingOrders.push(order);
       });
-
-      // 儲存並更新
-      saveOrders();
-      loadOrders();
-      updateStatistics();
 
       // 清除 file input
       event.target.value = "";
 
-      showAlert(
-        `匯入完成！\n成功匯入：${importedCount} 筆\n跳過：${skippedCount} 筆`,
-        "success"
-      );
+      // 開始處理訂單（逐筆檢查重複）
+      processPendingOrders(pendingOrders, skippedCount);
     } catch (error) {
       console.error("匯入錯誤：", error);
       showAlert("匯入失敗，請確認檔案格式是否正確", "error");
@@ -1044,12 +1079,286 @@ function importFromExcel(event) {
   reader.readAsArrayBuffer(file);
 }
 
-// 匯出 Excel - 橫向格式，菜品在標題列
+// 處理待匯入的訂單（逐筆檢查重複）
+let pendingOrdersQueue = [];
+let currentOrderIndex = 0;
+let importStats = {
+  imported: 0,
+  updated: 0,
+  duplicate: 0,
+  skipped: 0,
+};
+
+function processPendingOrders(pendingOrders, skippedCount) {
+  pendingOrdersQueue = pendingOrders;
+  currentOrderIndex = 0;
+  importStats = {
+    imported: 0,
+    updated: 0,
+    duplicate: 0,
+    skipped: skippedCount,
+  };
+
+  processNextOrder();
+}
+
+function processNextOrder() {
+  if (currentOrderIndex >= pendingOrdersQueue.length) {
+    // 所有訂單處理完成
+    finishImport();
+    return;
+  }
+
+  const order = pendingOrdersQueue[currentOrderIndex];
+
+  // 檢查訂單號碼是否重複
+  const existingByOrderNumber = orders.find(
+    (o) => o.orderNumber === order.orderNumber
+  );
+
+  // 檢查客戶是否已存在（根據姓名和電話）
+  const existingByCustomer = orders.find(
+    (o) =>
+      o.customer.name === order.customer.name &&
+      o.customer.phone === order.customer.phone
+  );
+
+  if (existingByOrderNumber || existingByCustomer) {
+    // 發現重複，顯示處理視窗
+    const existingOrder = existingByOrderNumber || existingByCustomer;
+    const duplicateType = existingByOrderNumber ? "訂單號碼" : "客戶資訊";
+    showDuplicateOrderModal(existingOrder, order, duplicateType);
+  } else {
+    // 沒有重複，直接加入
+    orders.unshift(order);
+    importStats.imported++;
+    currentOrderIndex++;
+    processNextOrder();
+  }
+}
+
+function showDuplicateOrderModal(existingOrder, newOrder, duplicateType) {
+  const modal = document.getElementById("duplicateOrderModal");
+  const duplicateInfo = document.getElementById("duplicateInfo");
+  const existingDetail = document.getElementById("existingOrderDetail");
+  const importDetail = document.getElementById("importOrderDetail");
+  const progress = document.getElementById("duplicateProgress");
+
+  // 設定提示訊息
+  duplicateInfo.textContent = `發現重複的${duplicateType}：${
+    duplicateType === "訂單號碼" ? newOrder.orderNumber : newOrder.customer.name
+  }`;
+
+  // 設定進度
+  progress.textContent = `處理進度：${currentOrderIndex + 1} / ${
+    pendingOrdersQueue.length
+  }`;
+
+  // 渲染現有訂單詳情
+  existingDetail.innerHTML = renderOrderDetail(existingOrder);
+
+  // 渲染匯入訂單詳情
+  importDetail.innerHTML = renderOrderDetail(newOrder);
+
+  // 顯示 modal
+  modal.style.display = "block";
+}
+
+function renderOrderDetail(order) {
+  let html = `
+    <div class="detail-row">
+      <span class="detail-label">訂單號碼：</span>
+      <span class="detail-value">${order.orderNumber}</span>
+    </div>
+    <div class="detail-row">
+      <span class="detail-label">訂購人：</span>
+      <span class="detail-value">${order.customer.name}</span>
+    </div>
+    <div class="detail-row">
+      <span class="detail-label">聯絡電話：</span>
+      <span class="detail-value">${order.customer.phone}</span>
+    </div>
+    <div class="detail-row">
+      <span class="detail-label">所屬群組：</span>
+      <span class="detail-value">${order.customer.group}</span>
+    </div>
+  `;
+
+  if (order.customer.note) {
+    html += `
+      <div class="detail-row">
+        <span class="detail-label">備註：</span>
+        <span class="detail-value">${order.customer.note}</span>
+      </div>
+    `;
+  }
+
+  html += `<div class="dishes-section"><h4>📋 訂購明細</h4>`;
+
+  let hasDishes = false;
+  DISHES.forEach((dish) => {
+    const qty = order.dishQuantities[dish.name] || 0;
+    if (qty > 0) {
+      hasDishes = true;
+      const subtotal = dish.price * qty;
+      html += `
+        <div class="dish-item">
+          <span>${dish.name} × ${qty}</span>
+          <span>NT$ ${subtotal.toLocaleString()}</span>
+        </div>
+      `;
+    }
+  });
+
+  if (!hasDishes) {
+    html += `<p style="color: #999; text-align: center;">無訂購項目</p>`;
+  }
+
+  html += `</div>`;
+
+  html += `
+    <div class="total-section">
+      <span>總金額：</span>
+      <span>NT$ ${order.total.toLocaleString()}</span>
+    </div>
+  `;
+
+  return html;
+}
+
+function handleDuplicateOrder(action) {
+  const modal = document.getElementById("duplicateOrderModal");
+  const newOrder = pendingOrdersQueue[currentOrderIndex];
+
+  if (action === "skip") {
+    // 跳過此筆
+    importStats.duplicate++;
+    
+    // 關閉 modal
+    modal.style.display = "none";
+    
+    // 處理下一筆
+    currentOrderIndex++;
+    processNextOrder();
+  } else if (action === "update") {
+    // 更新覆蓋
+    const existingIndex = orders.findIndex(
+      (o) =>
+        o.orderNumber === newOrder.orderNumber ||
+        (o.customer.name === newOrder.customer.name &&
+          o.customer.phone === newOrder.customer.phone)
+    );
+    if (existingIndex >= 0) {
+      orders[existingIndex] = newOrder;
+      importStats.updated++;
+    }
+    
+    // 關閉 modal
+    modal.style.display = "none";
+    
+    // 處理下一筆
+    currentOrderIndex++;
+    processNextOrder();
+  }
+}
+
+function showCustomOrderNumberInput() {
+  const section = document.getElementById("customOrderNumberSection");
+  const input = document.getElementById("customOrderNumber");
+  const newOrder = pendingOrdersQueue[currentOrderIndex];
+  
+  // 顯示輸入區
+  section.style.display = "block";
+  
+  // 預設值：原訂單號碼 + 後綴
+  input.value = `${newOrder.orderNumber}_副本`;
+  
+  // 聚焦並選取文字
+  setTimeout(() => {
+    input.focus();
+    input.select();
+  }, 100);
+}
+
+function hideCustomOrderNumberInput() {
+  const section = document.getElementById("customOrderNumberSection");
+  section.style.display = "none";
+}
+
+function confirmCustomOrderNumber() {
+  const input = document.getElementById("customOrderNumber");
+  const customOrderNumber = input.value.trim();
+  
+  if (!customOrderNumber) {
+    showAlert("請輸入訂單號碼", "warning");
+    return;
+  }
+  
+  // 檢查新的訂單號碼是否已存在
+  const exists = orders.find((o) => o.orderNumber === customOrderNumber);
+  if (exists) {
+    showAlert(`訂單號碼「${customOrderNumber}」已存在，請使用其他號碼`, "error");
+    return;
+  }
+  
+  // 強制加入（使用自訂的訂單號碼）
+  const modal = document.getElementById("duplicateOrderModal");
+  const newOrder = pendingOrdersQueue[currentOrderIndex];
+  
+  newOrder.orderNumber = customOrderNumber;
+  orders.unshift(newOrder);
+  importStats.imported++;
+  
+  // 隱藏輸入區
+  hideCustomOrderNumberInput();
+  
+  // 關閉 modal
+  modal.style.display = "none";
+  
+  // 處理下一筆
+  currentOrderIndex++;
+  processNextOrder();
+}
+
+function finishImport() {
+  // 儲存並更新
+  saveOrders();
+  filteredOrders = [...orders]; // 重置為全部訂單
+  loadOrders();
+  updateStatistics();
+
+  // 組合提示訊息
+  let message = "匯入完成！\n";
+  if (importStats.imported > 0)
+    message += `新增：${importStats.imported} 筆\n`;
+  if (importStats.updated > 0)
+    message += `更新：${importStats.updated} 筆\n`;
+  if (importStats.duplicate > 0)
+    message += `重複略過：${importStats.duplicate} 筆\n`;
+  if (importStats.skipped > 0)
+    message += `無效略過：${importStats.skipped} 筆`;
+
+  showAlert(message.trim(), "success");
+
+  // 清空隊列
+  pendingOrdersQueue = [];
+  currentOrderIndex = 0;
+}
+
+// 匯出 Excel - 橫向格式，菜品在標題列（依據搜尋結果匯出）
 function exportToExcel() {
-  if (orders.length === 0) {
+  // 使用 filteredOrders（搜尋/篩選後的結果），如果沒有篩選則使用全部訂單
+  const ordersToExport = filteredOrders.length > 0 ? filteredOrders : orders;
+  
+  if (ordersToExport.length === 0) {
     showAlert("目前沒有訂單可以匯出", "warning");
     return;
   }
+
+  // 檢查是否有篩選條件
+  const searchTerm = document.getElementById("searchInput").value;
+  const groupFilter = document.getElementById("groupFilter").value;
+  const isFiltered = searchTerm || groupFilter;
 
   // 準備標題列
   const headers = ["訂單號碼", "訂購人", "聯絡電話", "所屬群組", "備註"];
@@ -1061,7 +1370,7 @@ function exportToExcel() {
   // 準備資料列
   const excelData = [];
 
-  orders.forEach((order) => {
+  ordersToExport.forEach((order) => {
     if (!order.dishQuantities) return;
     const row = {
       訂單號碼: order.orderNumber || order.id,
@@ -1089,17 +1398,17 @@ function exportToExcel() {
     備註: "",
   };
 
-  // 計算每個菜品的總數量
+  // 計算每個菜品的總數量（基於匯出的訂單）
   DISHES.forEach((dish) => {
-    const totalQty = orders.reduce((sum, order) => {
+    const totalQty = ordersToExport.reduce((sum, order) => {
       if (!order.dishQuantities) return sum;
       return sum + (order.dishQuantities[dish.name] || 0);
     }, 0);
     statsRow[dish.name] = totalQty;
   });
 
-  // 計算所有訂單的總金額
-  const grandTotal = orders.reduce((sum, order) => {
+  // 計算所有訂單的總金額（基於匯出的訂單）
+  const grandTotal = ordersToExport.reduce((sum, order) => {
     if (!order.total) return sum;
     return sum + order.total;
   }, 0);
@@ -1124,23 +1433,42 @@ function exportToExcel() {
   colWidths.push({ wch: 12 }); // 訂購總金額
   ws["!cols"] = colWidths;
 
+  // 產生檔案名稱
+  let fileName = `年菜訂單`;
+  if (isFiltered) {
+    if (groupFilter) fileName += `_${groupFilter}`;
+    if (searchTerm) fileName += `_搜尋結果`;
+  }
+  fileName += `_${new Date().toISOString().split("T")[0]}.xlsx`;
+
   // 下載檔案
-  const fileName = `年菜訂單_${new Date().toISOString().split("T")[0]}.xlsx`;
   XLSX.writeFile(wb, fileName);
 
-  showAlert("Excel 檔案已成功匯出！", "success");
+  const message = isFiltered 
+    ? `已匯出 ${ordersToExport.length} 筆搜尋結果！`
+    : `已匯出全部 ${ordersToExport.length} 筆訂單！`;
+  
+  showAlert(message, "success");
 }
 
-// 匯出 PDF - 使用 html2canvas 支援中文
+// 匯出 PDF - 使用 html2canvas 支援中文（依據搜尋結果匯出）
 async function exportToPDF() {
-  if (orders.length === 0) {
+  // 使用 filteredOrders（搜尋/篩選後的結果），如果沒有篩選則使用全部訂單
+  const ordersToExport = filteredOrders.length > 0 ? filteredOrders : orders;
+  
+  if (ordersToExport.length === 0) {
     showAlert("目前沒有訂單可以匯出", "warning");
     return;
   }
 
+  // 檢查是否有篩選條件
+  const searchTerm = document.getElementById("searchInput").value;
+  const groupFilter = document.getElementById("groupFilter").value;
+  const isFiltered = searchTerm || groupFilter;
+
   try {
     // 訂單按編號排序（由小到大）
-    const sortedOrders = [...orders].sort((a, b) => {
+    const sortedOrders = [...ordersToExport].sort((a, b) => {
       const numA = parseInt((a.orderNumber || a.id).toString().replace(/\D/g, '')) || 0;
       const numB = parseInt((b.orderNumber || b.id).toString().replace(/\D/g, '')) || 0;
       return numA - numB;
@@ -1176,10 +1504,17 @@ async function exportToPDF() {
     const summaryDiv = document.createElement("div");
     summaryDiv.style.cssText = "width: 210mm; height: 297mm; padding: 15mm 20mm; background: white; font-family: 'Microsoft JhengHei', Arial, sans-serif; box-sizing: border-box; display: flex; flex-direction: column;";
     
+    let titleText = "新年年菜訂單統計報表";
+    if (isFiltered) {
+      if (groupFilter) titleText += ` - ${groupFilter}`;
+      if (searchTerm) titleText += ` (搜尋結果)`;
+    }
+    
     let summaryHTML = `
       <div style="text-align: center; margin-bottom: 20px;">
-        <h1 style="color: #e74c3c; font-size: 24px; margin: 0 0 8px 0;">🧧 新年年菜訂單統計報表 🧧</h1>
+        <h1 style="color: #e74c3c; font-size: 24px; margin: 0 0 8px 0;">🧧 ${titleText} 🧧</h1>
         <p style="font-size: 12px; color: #666; margin: 0;">匯出日期：${new Date().toLocaleDateString("zh-TW")}</p>
+        ${isFiltered ? `<p style="font-size: 11px; color: #e74c3c; margin: 5px 0 0 0;">📊 本報表為篩選結果</p>` : ''}
       </div>
       
       <div style="margin-bottom: 18px;">
@@ -1390,10 +1725,19 @@ async function exportToPDF() {
     }
 
     // 下載 PDF
-    const fileName = `年菜訂單_${new Date().toISOString().split("T")[0]}.pdf`;
+    let fileName = `年菜訂單`;
+    if (isFiltered) {
+      if (groupFilter) fileName += `_${groupFilter}`;
+      if (searchTerm) fileName += `_搜尋結果`;
+    }
+    fileName += `_${new Date().toISOString().split("T")[0]}.pdf`;
     pdf.save(fileName);
 
-    showAlert("PDF 檔案已成功匯出！", "success");
+    const message = isFiltered 
+      ? `已匯出 ${sortedOrders.length} 筆搜尋結果的 PDF！`
+      : `已匯出全部 ${sortedOrders.length} 筆訂單的 PDF！`;
+    
+    showAlert(message, "success");
     
     // 清理臨時元素
     document.body.removeChild(summaryDiv);
