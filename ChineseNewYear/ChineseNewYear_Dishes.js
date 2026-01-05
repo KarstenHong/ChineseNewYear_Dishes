@@ -2,8 +2,10 @@
 let orders = [];
 let groups = JSON.parse(localStorage.getItem("groups")) || [
   "電話訂購",
-  "家庭訂購",
-  "公司團購",
+  "台灣特浦",
+  "三隆鄉親",
+  "茂叔代訂",
+  "可可代訂",
 ];
 
 // 分頁變數
@@ -20,17 +22,14 @@ function saveDishes() {
 // 菜品列表 - 從 localStorage 載入，如果沒有則使用預設值
 let DISHES = JSON.parse(localStorage.getItem("dishes")) || [
   { name: "甘蔗香燻雞", price: 680 },
-  { name: "糖醋海鱸魚", price: 380 },
-  { name: "洪家筍干Q蹄膀", price: 650 },
-  { name: "皇品魚翅蝦仁羹", price: 650 },
-  { name: "香菇藥膳燉春雞", price: 760 },
-  { name: "洪家八寶丸(一斤)", price: 320 },
-  { name: "櫻花蝦米糕", price: 350 },
-  { name: "御品干貝佛跳牆(不含甕)", price: 800 },
-  { name: "蜜汁全排骨(五支)", price: 290 },
+  { name: "糖醋海鱸魚", price: 400 },
+  { name: "洪家筍干Q蹄膀", price: 700 },
+  { name: "皇品魚翅蝦仁羹", price: 700 },
+  { name: "櫻花蝦米糕", price: 400 },
+  { name: "御品干貝佛跳牆(不含甕)", price: 850 },
+  { name: "蜜汁全排骨(五支)", price: 320 },
   { name: "白雪旗魚丸(一斤)", price: 230 },
   { name: "極鮮旗魚卷", price: 130 },
-  { name: "筍干", price: 100 },
 ];
 
 // 如果是首次使用，儲存預設菜品
@@ -144,10 +143,10 @@ document.addEventListener("DOMContentLoaded", function () {
   console.log("頁面載入完成");
   console.log("DISHES 陣列:", DISHES);
   console.log("orders 陣列長度:", orders.length);
-  
+
   // 先初始化 filteredOrders（必須在 loadOrders() 之前）
   filteredOrders = [...orders];
-  
+
   renderDishesInForm(); // 渲染菜品列表
   loadOrders();
   updateStatistics();
@@ -171,7 +170,7 @@ function setupEventListeners() {
   document
     .getElementById("groupFilter")
     .addEventListener("change", searchOrders);
-  
+
   // 離開頁面前的提醒
   window.addEventListener("beforeunload", function (e) {
     // 只有當有訂單資料時才提醒
@@ -201,9 +200,9 @@ function incrementQuantity(quantityBox) {
 
   // 更新小計和總計
   updateRowSubtotal(row);
-  
+
   // 判斷是在訂購表單還是編輯模式
-  const isEditMode = row.closest('#editFormContainer') !== null;
+  const isEditMode = row.closest("#editFormContainer") !== null;
   if (isEditMode) {
     calculateEditTotal();
   } else {
@@ -239,9 +238,9 @@ function resetDishQuantity(button) {
 
   // 更新小計和總計
   updateRowSubtotal(row);
-  
+
   // 判斷是在訂購表單還是編輯模式
-  const isEditMode = row.closest('#editFormContainer') !== null;
+  const isEditMode = row.closest("#editFormContainer") !== null;
   if (isEditMode) {
     calculateEditTotal();
   } else {
@@ -352,7 +351,8 @@ function handleFormSubmit(e) {
     const quantityBox = row.querySelector(".quantity-box");
     if (quantityBox) {
       const quantity =
-        parseInt(quantityBox.querySelector(".quantity-display").textContent) || 0;
+        parseInt(quantityBox.querySelector(".quantity-display").textContent) ||
+        0;
       dishQuantities[dishName] = quantity;
       if (quantity > 0) hasOrder = true;
     }
@@ -434,32 +434,33 @@ function loadOrders() {
   if (!Array.isArray(filteredOrders)) {
     filteredOrders = [...orders];
   }
-  
+
   // 訂單號碼排序（由小到大）
   filteredOrders.sort((a, b) => {
     const numA = a.orderNumber || a.id.toString();
     const numB = b.orderNumber || b.id.toString();
-    
+
     // 嘗試轉換成數字比較
     const parseNum = (str) => {
-      const num = parseInt(str.replace(/\D/g, ''));
+      const num = parseInt(str.replace(/\D/g, ""));
       return isNaN(num) ? 0 : num;
     };
-    
+
     const valA = parseNum(numA);
     const valB = parseNum(numB);
-    
+
     if (valA !== valB) {
       return valA - valB;
     }
-    
+
     // 如果數字相同，用字串比較
     return numA.localeCompare(numB);
   });
 
   // 如果沒有訂單
   if (filteredOrders.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="7" class="no-orders-row">目前沒有訂單</td></tr>';
+    tbody.innerHTML =
+      '<tr><td colspan="7" class="no-orders-row">目前沒有訂單</td></tr>';
     updatePaginationInfo();
     return;
   }
@@ -490,9 +491,15 @@ function loadOrders() {
           <td class="order-date">${formatDate(order.createdAt)}</td>
           <td class="order-total">NT$ ${order.total.toLocaleString()}</td>
           <td class="order-actions">
-            <button class="btn-detail" onclick="showOrderDetail(${order.id})">詳情</button>
-            <button class="btn-edit-small" onclick="editOrder(${order.id})">編輯</button>
-            <button class="btn-delete-small" onclick="deleteOrder(${order.id})">刪除</button>
+            <button class="btn-detail" onclick="showOrderDetail(${
+              order.id
+            })">詳情</button>
+            <button class="btn-edit-small" onclick="editOrder(${
+              order.id
+            })">編輯</button>
+            <button class="btn-delete-small" onclick="deleteOrder(${
+              order.id
+            })">刪除</button>
           </td>
         </tr>
       `;
@@ -511,40 +518,45 @@ function updatePaginationInfo() {
   const startIndex = totalOrders === 0 ? 0 : (currentPage - 1) * pageSize + 1;
   const endIndex = Math.min(currentPage * pageSize, totalOrders);
 
-  document.getElementById("pageInfo").textContent = 
-    `顯示第 ${startIndex}-${endIndex} 筆，共 ${totalOrders} 筆訂單`;
-  document.getElementById("currentPage").textContent = `第 ${currentPage} / ${totalPages} 頁`;
+  document.getElementById(
+    "pageInfo"
+  ).textContent = `顯示第 ${startIndex}-${endIndex} 筆，共 ${totalOrders} 筆訂單`;
+  document.getElementById(
+    "currentPage"
+  ).textContent = `第 ${currentPage} / ${totalPages} 頁`;
 }
 
 // 更新分頁按鈕狀態
 function updatePaginationButtons() {
   const totalPages = Math.ceil(filteredOrders.length / pageSize);
-  
+
   document.getElementById("firstPageBtn").disabled = currentPage === 1;
   document.getElementById("prevPageBtn").disabled = currentPage === 1;
-  document.getElementById("nextPageBtn").disabled = currentPage === totalPages || totalPages === 0;
-  document.getElementById("lastPageBtn").disabled = currentPage === totalPages || totalPages === 0;
+  document.getElementById("nextPageBtn").disabled =
+    currentPage === totalPages || totalPages === 0;
+  document.getElementById("lastPageBtn").disabled =
+    currentPage === totalPages || totalPages === 0;
 }
 
 // 換頁功能
 function changePage(direction) {
   const totalPages = Math.ceil(filteredOrders.length / pageSize);
-  
-  switch(direction) {
-    case 'first':
+
+  switch (direction) {
+    case "first":
       currentPage = 1;
       break;
-    case 'prev':
+    case "prev":
       if (currentPage > 1) currentPage--;
       break;
-    case 'next':
+    case "next":
       if (currentPage < totalPages) currentPage++;
       break;
-    case 'last':
+    case "last":
       currentPage = totalPages;
       break;
   }
-  
+
   loadOrders();
 }
 
@@ -558,7 +570,7 @@ function changePageSize() {
 
 // 顯示訂單詳情
 function showOrderDetail(orderId) {
-  const order = orders.find(o => o.id === orderId);
+  const order = orders.find((o) => o.id === orderId);
   if (!order) return;
 
   // 安全檢查
@@ -568,12 +580,16 @@ function showOrderDetail(orderId) {
   }
 
   // 計算訂購的菜品
-  const orderedDishes = DISHES.filter(dish => order.dishQuantities[dish.name] > 0);
+  const orderedDishes = DISHES.filter(
+    (dish) => order.dishQuantities[dish.name] > 0
+  );
 
   // 生成詳情內容
   const detailContent = `
     <div style="padding: 20px;">
-      <h3 style="color: #e74c3c; margin-bottom: 20px;">訂單詳情 - ${order.orderNumber || order.id}</h3>
+      <h3 style="color: #e74c3c; margin-bottom: 20px;">訂單詳情 - ${
+        order.orderNumber || order.id
+      }</h3>
       
       <div style="background: #f8f9fa; padding: 15px; border-radius: 8px; margin-bottom: 20px;">
         <h4 style="margin-bottom: 10px;">訂購人資訊</h4>
@@ -583,7 +599,11 @@ function showOrderDetail(orderId) {
           <div><strong>群組：</strong>${order.customer.group || "未分組"}</div>
           <div><strong>日期：</strong>${formatDate(order.createdAt)}</div>
         </div>
-        ${order.customer.note ? `<div style="margin-top: 10px;"><strong>備註：</strong>${order.customer.note}</div>` : ''}
+        ${
+          order.customer.note
+            ? `<div style="margin-top: 10px;"><strong>備註：</strong>${order.customer.note}</div>`
+            : ""
+        }
       </div>
 
       <div style="background: #fff; padding: 15px; border: 1px solid #e0e0e0; border-radius: 8px;">
@@ -598,10 +618,11 @@ function showOrderDetail(orderId) {
             </tr>
           </thead>
           <tbody>
-            ${orderedDishes.map(dish => {
-              const qty = order.dishQuantities[dish.name];
-              const subtotal = dish.price * qty;
-              return `
+            ${orderedDishes
+              .map((dish) => {
+                const qty = order.dishQuantities[dish.name];
+                const subtotal = dish.price * qty;
+                return `
                 <tr style="border-bottom: 1px solid #e0e0e0;">
                   <td style="padding: 10px;">${dish.name}</td>
                   <td style="padding: 10px; text-align: center;">NT$ ${dish.price.toLocaleString()}</td>
@@ -609,7 +630,8 @@ function showOrderDetail(orderId) {
                   <td style="padding: 10px; text-align: right; font-weight: 600;">NT$ ${subtotal.toLocaleString()}</td>
                 </tr>
               `;
-            }).join('')}
+              })
+              .join("")}
           </tbody>
           <tfoot>
             <tr style="background: #f8f9fa; font-weight: bold; font-size: 1.1em;">
@@ -930,7 +952,11 @@ function searchOrders() {
     const filterInfo = [];
     if (groupFilter) filterInfo.push(`群組: ${groupFilter}`);
     if (searchTerm) filterInfo.push(`關鍵字: ${searchTerm}`);
-    console.log(`🔍 搜尋條件：${filterInfo.join(', ')} | 結果：${filteredOrders.length} 筆`);
+    console.log(
+      `🔍 搜尋條件：${filterInfo.join(", ")} | 結果：${
+        filteredOrders.length
+      } 筆`
+    );
   }
 
   // 使用表格版本的 loadOrders 重新渲染
@@ -1233,10 +1259,10 @@ function handleDuplicateOrder(action) {
   if (action === "skip") {
     // 跳過此筆
     importStats.duplicate++;
-    
+
     // 關閉 modal
     modal.style.display = "none";
-    
+
     // 處理下一筆
     currentOrderIndex++;
     processNextOrder();
@@ -1252,10 +1278,10 @@ function handleDuplicateOrder(action) {
       orders[existingIndex] = newOrder;
       importStats.updated++;
     }
-    
+
     // 關閉 modal
     modal.style.display = "none";
-    
+
     // 處理下一筆
     currentOrderIndex++;
     processNextOrder();
@@ -1266,13 +1292,13 @@ function showCustomOrderNumberInput() {
   const section = document.getElementById("customOrderNumberSection");
   const input = document.getElementById("customOrderNumber");
   const newOrder = pendingOrdersQueue[currentOrderIndex];
-  
+
   // 顯示輸入區
   section.style.display = "block";
-  
+
   // 預設值：原訂單號碼 + 後綴
   input.value = `${newOrder.orderNumber}_副本`;
-  
+
   // 聚焦並選取文字
   setTimeout(() => {
     input.focus();
@@ -1288,33 +1314,36 @@ function hideCustomOrderNumberInput() {
 function confirmCustomOrderNumber() {
   const input = document.getElementById("customOrderNumber");
   const customOrderNumber = input.value.trim();
-  
+
   if (!customOrderNumber) {
     showAlert("請輸入訂單號碼", "warning");
     return;
   }
-  
+
   // 檢查新的訂單號碼是否已存在
   const exists = orders.find((o) => o.orderNumber === customOrderNumber);
   if (exists) {
-    showAlert(`訂單號碼「${customOrderNumber}」已存在，請使用其他號碼`, "error");
+    showAlert(
+      `訂單號碼「${customOrderNumber}」已存在，請使用其他號碼`,
+      "error"
+    );
     return;
   }
-  
+
   // 強制加入（使用自訂的訂單號碼）
   const modal = document.getElementById("duplicateOrderModal");
   const newOrder = pendingOrdersQueue[currentOrderIndex];
-  
+
   newOrder.orderNumber = customOrderNumber;
   orders.unshift(newOrder);
   importStats.imported++;
-  
+
   // 隱藏輸入區
   hideCustomOrderNumberInput();
-  
+
   // 關閉 modal
   modal.style.display = "none";
-  
+
   // 處理下一筆
   currentOrderIndex++;
   processNextOrder();
@@ -1329,14 +1358,11 @@ function finishImport() {
 
   // 組合提示訊息
   let message = "匯入完成！\n";
-  if (importStats.imported > 0)
-    message += `新增：${importStats.imported} 筆\n`;
-  if (importStats.updated > 0)
-    message += `更新：${importStats.updated} 筆\n`;
+  if (importStats.imported > 0) message += `新增：${importStats.imported} 筆\n`;
+  if (importStats.updated > 0) message += `更新：${importStats.updated} 筆\n`;
   if (importStats.duplicate > 0)
     message += `重複略過：${importStats.duplicate} 筆\n`;
-  if (importStats.skipped > 0)
-    message += `無效略過：${importStats.skipped} 筆`;
+  if (importStats.skipped > 0) message += `無效略過：${importStats.skipped} 筆`;
 
   showAlert(message.trim(), "success");
 
@@ -1349,7 +1375,7 @@ function finishImport() {
 function exportToExcel() {
   // 使用 filteredOrders（搜尋/篩選後的結果），如果沒有篩選則使用全部訂單
   const ordersToExport = filteredOrders.length > 0 ? filteredOrders : orders;
-  
+
   if (ordersToExport.length === 0) {
     showAlert("目前沒有訂單可以匯出", "warning");
     return;
@@ -1444,10 +1470,10 @@ function exportToExcel() {
   // 下載檔案
   XLSX.writeFile(wb, fileName);
 
-  const message = isFiltered 
+  const message = isFiltered
     ? `已匯出 ${ordersToExport.length} 筆搜尋結果！`
     : `已匯出全部 ${ordersToExport.length} 筆訂單！`;
-  
+
   showAlert(message, "success");
 }
 
@@ -1455,7 +1481,7 @@ function exportToExcel() {
 async function exportToPDF() {
   // 使用 filteredOrders（搜尋/篩選後的結果），如果沒有篩選則使用全部訂單
   const ordersToExport = filteredOrders.length > 0 ? filteredOrders : orders;
-  
+
   if (ordersToExport.length === 0) {
     showAlert("目前沒有訂單可以匯出", "warning");
     return;
@@ -1469,17 +1495,22 @@ async function exportToPDF() {
   try {
     // 訂單按編號排序（由小到大）
     const sortedOrders = [...ordersToExport].sort((a, b) => {
-      const numA = parseInt((a.orderNumber || a.id).toString().replace(/\D/g, '')) || 0;
-      const numB = parseInt((b.orderNumber || b.id).toString().replace(/\D/g, '')) || 0;
+      const numA =
+        parseInt((a.orderNumber || a.id).toString().replace(/\D/g, "")) || 0;
+      const numB =
+        parseInt((b.orderNumber || b.id).toString().replace(/\D/g, "")) || 0;
       return numA - numB;
     });
 
     // 計算統計資料
-    const grandTotal = sortedOrders.reduce((sum, order) => sum + (order.total || 0), 0);
-    
+    const grandTotal = sortedOrders.reduce(
+      (sum, order) => sum + (order.total || 0),
+      0
+    );
+
     // 各群組統計
     const groupStats = {};
-    sortedOrders.forEach(order => {
+    sortedOrders.forEach((order) => {
       const group = order.customer.group || "未分組";
       if (!groupStats[group]) {
         groupStats[group] = { count: 0, total: 0 };
@@ -1487,7 +1518,7 @@ async function exportToPDF() {
       groupStats[group].count++;
       groupStats[group].total += order.total || 0;
     });
-    
+
     // 各菜品統計
     const dishStats = {};
     DISHES.forEach((dish) => {
@@ -1502,19 +1533,26 @@ async function exportToPDF() {
 
     // ==================== 創建第一頁：統計摘要 ====================
     const summaryDiv = document.createElement("div");
-    summaryDiv.style.cssText = "width: 210mm; height: 297mm; padding: 15mm 20mm; background: white; font-family: 'Microsoft JhengHei', Arial, sans-serif; box-sizing: border-box; display: flex; flex-direction: column;";
-    
+    summaryDiv.style.cssText =
+      "width: 210mm; height: 297mm; padding: 15mm 20mm; background: white; font-family: 'Microsoft JhengHei', Arial, sans-serif; box-sizing: border-box; display: flex; flex-direction: column;";
+
     let titleText = "新年年菜訂單統計報表";
     if (isFiltered) {
       if (groupFilter) titleText += ` - ${groupFilter}`;
       if (searchTerm) titleText += ` (搜尋結果)`;
     }
-    
+
     let summaryHTML = `
       <div style="text-align: center; margin-bottom: 20px;">
         <h1 style="color: #e74c3c; font-size: 24px; margin: 0 0 8px 0;">🧧 ${titleText} 🧧</h1>
-        <p style="font-size: 12px; color: #666; margin: 0;">匯出日期：${new Date().toLocaleDateString("zh-TW")}</p>
-        ${isFiltered ? `<p style="font-size: 11px; color: #e74c3c; margin: 5px 0 0 0;">📊 本報表為篩選結果</p>` : ''}
+        <p style="font-size: 12px; color: #666; margin: 0;">匯出日期：${new Date().toLocaleDateString(
+          "zh-TW"
+        )}</p>
+        ${
+          isFiltered
+            ? `<p style="font-size: 11px; color: #e74c3c; margin: 5px 0 0 0;">📊 本報表為篩選結果</p>`
+            : ""
+        }
       </div>
       
       <div style="margin-bottom: 18px;">
@@ -1522,7 +1560,9 @@ async function exportToPDF() {
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
           <div style="background: #fff3e6; padding: 15px; border-radius: 8px; text-align: center;">
             <div style="font-size: 12px; color: #666; margin-bottom: 6px;">總訂單數</div>
-            <div style="font-size: 28px; font-weight: bold; color: #e74c3c;">${sortedOrders.length} 筆</div>
+            <div style="font-size: 28px; font-weight: bold; color: #e74c3c;">${
+              sortedOrders.length
+            } 筆</div>
           </div>
           <div style="background: #e8f8f5; padding: 15px; border-radius: 8px; text-align: center;">
             <div style="font-size: 12px; color: #666; margin-bottom: 6px;">總金額</div>
@@ -1542,13 +1582,19 @@ async function exportToPDF() {
             </tr>
           </thead>
           <tbody>
-            ${Object.entries(groupStats).map(([group, stats]) => `
+            ${Object.entries(groupStats)
+              .map(
+                ([group, stats]) => `
               <tr style="border-bottom: 1px solid #ddd;">
                 <td style="padding: 8px; font-size: 12px;">${group}</td>
-                <td style="padding: 8px; text-align: center; font-size: 12px;">${stats.count} 筆</td>
+                <td style="padding: 8px; text-align: center; font-size: 12px;">${
+                  stats.count
+                } 筆</td>
                 <td style="padding: 8px; text-align: right; font-size: 12px; color: #27ae60; font-weight: bold;">NT$ ${stats.total.toLocaleString()}</td>
               </tr>
-            `).join('')}
+            `
+              )
+              .join("")}
           </tbody>
         </table>
       </div>
@@ -1566,35 +1612,40 @@ async function exportToPDF() {
               </tr>
             </thead>
             <tbody>
-              ${Object.entries(dishStats).map(([dish, data]) => {
-                const subtotal = data.qty * data.price;
-                return `
+              ${Object.entries(dishStats)
+                .map(([dish, data]) => {
+                  const subtotal = data.qty * data.price;
+                  return `
                   <tr style="border-bottom: 1px solid #ddd;">
                     <td style="padding: 8px; font-size: 12px;">${dish}</td>
-                    <td style="padding: 8px; text-align: center; font-size: 12px; font-weight: bold;">${data.qty} 份</td>
+                    <td style="padding: 8px; text-align: center; font-size: 12px; font-weight: bold;">${
+                      data.qty
+                    } 份</td>
                     <td style="padding: 8px; text-align: right; font-size: 12px;">NT$ ${data.price.toLocaleString()}</td>
                     <td style="padding: 8px; text-align: right; font-size: 12px; color: #27ae60; font-weight: bold;">NT$ ${subtotal.toLocaleString()}</td>
                   </tr>
                 `;
-              }).join('')}
+                })
+                .join("")}
             </tbody>
           </table>
         </div>
       </div>
     `;
-    
+
     summaryDiv.innerHTML = summaryHTML;
     document.body.appendChild(summaryDiv);
 
     // ==================== 創建後續頁：訂單明細（Excel格式）====================
     const ordersDiv = document.createElement("div");
-    ordersDiv.style.cssText = "width: 297mm; height: 210mm; padding: 10mm 15mm; background: white; font-family: 'Microsoft JhengHei', Arial, sans-serif; box-sizing: border-box;";
-    
+    ordersDiv.style.cssText =
+      "width: 297mm; height: 210mm; padding: 10mm 15mm; background: white; font-family: 'Microsoft JhengHei', Arial, sans-serif; box-sizing: border-box;";
+
     // 計算欄位數量和寬度
     const dishCount = DISHES.length;
     const baseColumns = 5; // 序號、訂單號碼、訂購人、電話、群組
     const totalColumns = baseColumns + dishCount + 1; // +1 是總金額
-    
+
     let ordersHTML = `
       <div style="text-align: center; margin-bottom: 12px;">
         <h1 style="color: #e74c3c; font-size: 22px; margin: 0 0 5px 0;">訂單明細</h1>
@@ -1610,70 +1661,86 @@ async function exportToPDF() {
             <th style="padding: 8px 5px; text-align: left; border: 1px solid #c0392b; font-size: 11px;">電話</th>
             <th style="padding: 8px 5px; text-align: left; border: 1px solid #c0392b; font-size: 11px;">群組</th>
     `;
-    
+
     // 動態生成菜品欄位標題
-    DISHES.forEach(dish => {
+    DISHES.forEach((dish) => {
       ordersHTML += `<th style="padding: 8px 4px; text-align: center; border: 1px solid #c0392b; font-size: 10px;">${dish.name}</th>`;
     });
-    
+
     ordersHTML += `
             <th style="padding: 8px 5px; text-align: right; border: 1px solid #c0392b; font-size: 11px;">總金額</th>
           </tr>
         </thead>
         <tbody>
     `;
-    
+
     // 生成訂單資料列
     sortedOrders.forEach((order, index) => {
       if (!order.dishQuantities) return;
-      
-      const rowStyle = index % 2 === 0 ? 'background: #f9f9f9;' : 'background: white;';
-      
+
+      const rowStyle =
+        index % 2 === 0 ? "background: #f9f9f9;" : "background: white;";
+
       ordersHTML += `
         <tr style="${rowStyle}">
-          <td style="padding: 6px 4px; text-align: center; border: 1px solid #ddd; font-size: 10px;">${index + 1}</td>
-          <td style="padding: 6px 5px; border: 1px solid #ddd; font-size: 10px;">${order.orderNumber || order.id}</td>
-          <td style="padding: 6px 5px; border: 1px solid #ddd; font-size: 10px;">${order.customer.name}</td>
-          <td style="padding: 6px 5px; border: 1px solid #ddd; font-size: 9px;">${order.customer.phone}</td>
-          <td style="padding: 6px 5px; border: 1px solid #ddd; font-size: 9px;">${order.customer.group || "未分組"}</td>
+          <td style="padding: 6px 4px; text-align: center; border: 1px solid #ddd; font-size: 10px;">${
+            index + 1
+          }</td>
+          <td style="padding: 6px 5px; border: 1px solid #ddd; font-size: 10px;">${
+            order.orderNumber || order.id
+          }</td>
+          <td style="padding: 6px 5px; border: 1px solid #ddd; font-size: 10px;">${
+            order.customer.name
+          }</td>
+          <td style="padding: 6px 5px; border: 1px solid #ddd; font-size: 9px;">${
+            order.customer.phone
+          }</td>
+          <td style="padding: 6px 5px; border: 1px solid #ddd; font-size: 9px;">${
+            order.customer.group || "未分組"
+          }</td>
       `;
-      
+
       // 填入各菜品的訂購數量
-      DISHES.forEach(dish => {
+      DISHES.forEach((dish) => {
         const qty = order.dishQuantities[dish.name] || 0;
-        const cellStyle = qty > 0 ? 'font-weight: bold; color: #e74c3c;' : 'color: #999;';
-        ordersHTML += `<td style="padding: 6px 4px; text-align: center; border: 1px solid #ddd; font-size: 11px; ${cellStyle}">${qty > 0 ? qty : '-'}</td>`;
+        const cellStyle =
+          qty > 0 ? "font-weight: bold; color: #e74c3c;" : "color: #999;";
+        ordersHTML += `<td style="padding: 6px 4px; text-align: center; border: 1px solid #ddd; font-size: 11px; ${cellStyle}">${
+          qty > 0 ? qty : "-"
+        }</td>`;
       });
-      
+
       ordersHTML += `
           <td style="padding: 6px 5px; text-align: right; border: 1px solid #ddd; font-weight: bold; color: #27ae60; font-size: 10px;">NT$ ${order.total.toLocaleString()}</td>
         </tr>
       `;
     });
-    
+
     // 統計列
     ordersHTML += `
         <tr style="background: #fff3cd; font-weight: bold;">
           <td colspan="2" style="padding: 8px 5px; text-align: center; border: 1px solid #ddd; color: #e74c3c; font-size: 11px;">【統計】</td>
           <td colspan="3" style="padding: 8px 5px; border: 1px solid #ddd;"></td>
     `;
-    
+
     // 計算各菜品總數量
-    DISHES.forEach(dish => {
+    DISHES.forEach((dish) => {
       const totalQty = sortedOrders.reduce((sum, order) => {
         if (!order.dishQuantities) return sum;
         return sum + (order.dishQuantities[dish.name] || 0);
       }, 0);
-      ordersHTML += `<td style="padding: 8px 4px; text-align: center; border: 1px solid #ddd; color: #e74c3c; font-size: 11px;">${totalQty > 0 ? totalQty : '-'}</td>`;
+      ordersHTML += `<td style="padding: 8px 4px; text-align: center; border: 1px solid #ddd; color: #e74c3c; font-size: 11px;">${
+        totalQty > 0 ? totalQty : "-"
+      }</td>`;
     });
-    
+
     ordersHTML += `
           <td style="padding: 8px 5px; text-align: right; border: 1px solid #ddd; color: #27ae60; font-size: 11px;">NT$ ${grandTotal.toLocaleString()}</td>
         </tr>
         </tbody>
       </table>
     `;
-    
+
     ordersDiv.innerHTML = ordersHTML;
     document.body.appendChild(ordersDiv);
 
@@ -1688,7 +1755,7 @@ async function exportToPDF() {
       logging: false,
       backgroundColor: "#ffffff",
     });
-    
+
     const summaryImgData = summaryCanvas.toDataURL("image/png");
     const imgWidth = 210;
     const imgHeight = (summaryCanvas.height * imgWidth) / summaryCanvas.width;
@@ -1701,26 +1768,41 @@ async function exportToPDF() {
       logging: false,
       backgroundColor: "#ffffff",
     });
-    
+
     const ordersImgData = ordersCanvas.toDataURL("image/png");
-    
+
     // 新增橫向頁面
     pdf.addPage("a4", "landscape");
     const landscapeWidth = 297; // A4 橫向寬度
     const landscapeHeight = 210; // A4 橫向高度
-    const ordersImgHeight = (ordersCanvas.height * landscapeWidth) / ordersCanvas.width;
-    
+    const ordersImgHeight =
+      (ordersCanvas.height * landscapeWidth) / ordersCanvas.width;
+
     let heightLeft = ordersImgHeight;
     let position = 0;
-    
-    pdf.addImage(ordersImgData, "PNG", 0, position, landscapeWidth, ordersImgHeight);
+
+    pdf.addImage(
+      ordersImgData,
+      "PNG",
+      0,
+      position,
+      landscapeWidth,
+      ordersImgHeight
+    );
     heightLeft -= landscapeHeight;
-    
+
     // 如果需要更多頁面
     while (heightLeft > 0) {
       position = heightLeft - ordersImgHeight;
       pdf.addPage("a4", "landscape");
-      pdf.addImage(ordersImgData, "PNG", 0, position, landscapeWidth, ordersImgHeight);
+      pdf.addImage(
+        ordersImgData,
+        "PNG",
+        0,
+        position,
+        landscapeWidth,
+        ordersImgHeight
+      );
       heightLeft -= landscapeHeight;
     }
 
@@ -1733,16 +1815,15 @@ async function exportToPDF() {
     fileName += `_${new Date().toISOString().split("T")[0]}.pdf`;
     pdf.save(fileName);
 
-    const message = isFiltered 
+    const message = isFiltered
       ? `已匯出 ${sortedOrders.length} 筆搜尋結果的 PDF！`
       : `已匯出全部 ${sortedOrders.length} 筆訂單的 PDF！`;
-    
+
     showAlert(message, "success");
-    
+
     // 清理臨時元素
     document.body.removeChild(summaryDiv);
     document.body.removeChild(ordersDiv);
-    
   } catch (error) {
     console.error("PDF 匯出失敗:", error);
     showAlert(`PDF 匯出失敗：${error.message}`, "error");
