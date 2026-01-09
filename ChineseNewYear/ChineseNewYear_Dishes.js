@@ -60,6 +60,24 @@ try {
   localStorage.setItem("orders", JSON.stringify(orders));
 }
 
+// 切換菜品管理區域顯示（開發者功能）
+window.toggleDishManagement = function () {
+  const section = document.getElementById("dishManagementSection");
+  if (section) {
+    const isHidden = section.style.display === "none";
+    section.style.display = isHidden ? "block" : "none";
+    console.log(
+      `%c菜品管理功能已${isHidden ? "開啟" : "關閉"} ✓`,
+      `color: ${
+        isHidden ? "#27ae60" : "#e74c3c"
+      }; font-size: 14px; font-weight: bold;`
+    );
+    return isHidden ? "已開啟" : "已關閉";
+  }
+  console.error("找不到菜品管理區域");
+  return "錯誤";
+};
+
 // 自訂提示窗函數
 function showAlert(message, type = "info", callback = null) {
   const overlay = document.getElementById("customAlert");
@@ -143,6 +161,16 @@ document.addEventListener("DOMContentLoaded", function () {
   console.log("頁面載入完成");
   console.log("DISHES 陣列:", DISHES);
   console.log("orders 陣列長度:", orders.length);
+
+  // 開發者提示
+  console.log(
+    "%c💡 開發者提示",
+    "color: #f39c12; font-size: 16px; font-weight: bold;"
+  );
+  console.log(
+    "%c若要顯示菜品管理功能，請在控制台輸入: toggleDishManagement()",
+    "color: #3498db; font-size: 14px;"
+  );
 
   // 先初始化 filteredOrders（必須在 loadOrders() 之前）
   filteredOrders = [...orders];
@@ -484,13 +512,17 @@ function loadOrders() {
     .map((order) => {
       return `
         <tr>
-          <td class="order-number">${order.orderNumber || order.id}</td>
-          <td>${order.customer.name}</td>
-          <td>${order.customer.phone}</td>
-          <td>${order.customer.group || "未分組"}</td>
-          <td class="order-date">${formatDate(order.createdAt)}</td>
-          <td class="order-total">NT$ ${order.total.toLocaleString()}</td>
-          <td class="order-actions">
+          <td class="order-number" data-label="訂單號碼">${
+            order.orderNumber || order.id
+          }</td>
+          <td data-label="訂購人">${order.customer.name}</td>
+          <td data-label="聯絡電話">${order.customer.phone}</td>
+          <td data-label="所屬群組">${order.customer.group || "未分組"}</td>
+          <td class="order-date" data-label="訂購日期">${formatDate(
+            order.createdAt
+          )}</td>
+          <td class="order-total" data-label="總金額">NT$ ${order.total.toLocaleString()}</td>
+          <td class="order-actions" data-label="操作">
             <button class="btn-detail" onclick="showOrderDetail(${
               order.id
             })">詳情</button>
@@ -586,60 +618,74 @@ function showOrderDetail(orderId) {
 
   // 生成詳情內容
   const detailContent = `
-    <div style="padding: 20px;">
-      <h3 style="color: #e74c3c; margin-bottom: 20px;">訂單詳情 - ${
+    <div class="order-detail-wrapper">
+      <h3 class="order-detail-title">訂單詳情 - ${
         order.orderNumber || order.id
       }</h3>
       
-      <div style="background: #f8f9fa; padding: 15px; border-radius: 8px; margin-bottom: 20px;">
-        <h4 style="margin-bottom: 10px;">訂購人資訊</h4>
-        <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px;">
-          <div><strong>姓名：</strong>${order.customer.name}</div>
-          <div><strong>電話：</strong>${order.customer.phone}</div>
-          <div><strong>群組：</strong>${order.customer.group || "未分組"}</div>
-          <div><strong>日期：</strong>${formatDate(order.createdAt)}</div>
+      <div class="customer-info-box">
+        <h4 class="section-title">訂購人資訊</h4>
+        <div class="info-grid">
+          <div class="info-item">
+            <span class="info-label">姓名：</span>
+            <span class="info-value">${order.customer.name}</span>
+          </div>
+          <div class="info-item">
+            <span class="info-label">電話：</span>
+            <span class="info-value">${order.customer.phone}</span>
+          </div>
+          <div class="info-item">
+            <span class="info-label">群組：</span>
+            <span class="info-value">${order.customer.group || "未分組"}</span>
+          </div>
+          <div class="info-item">
+            <span class="info-label">日期：</span>
+            <span class="info-value">${formatDate(order.createdAt)}</span>
+          </div>
         </div>
         ${
           order.customer.note
-            ? `<div style="margin-top: 10px;"><strong>備註：</strong>${order.customer.note}</div>`
+            ? `<div class="info-note"><span class="info-label">備註：</span><span class="info-value">${order.customer.note}</span></div>`
             : ""
         }
       </div>
 
-      <div style="background: #fff; padding: 15px; border: 1px solid #e0e0e0; border-radius: 8px;">
-        <h4 style="margin-bottom: 15px;">訂購菜品</h4>
-        <table style="width: 100%; border-collapse: collapse;">
-          <thead>
-            <tr style="background: #f8f9fa; border-bottom: 2px solid #e0e0e0;">
-              <th style="padding: 10px; text-align: left;">菜品名稱</th>
-              <th style="padding: 10px; text-align: center;">單價</th>
-              <th style="padding: 10px; text-align: center;">數量</th>
-              <th style="padding: 10px; text-align: right;">小計</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${orderedDishes
-              .map((dish) => {
-                const qty = order.dishQuantities[dish.name];
-                const subtotal = dish.price * qty;
-                return `
-                <tr style="border-bottom: 1px solid #e0e0e0;">
-                  <td style="padding: 10px;">${dish.name}</td>
-                  <td style="padding: 10px; text-align: center;">NT$ ${dish.price.toLocaleString()}</td>
-                  <td style="padding: 10px; text-align: center;">${qty}</td>
-                  <td style="padding: 10px; text-align: right; font-weight: 600;">NT$ ${subtotal.toLocaleString()}</td>
-                </tr>
-              `;
-              })
-              .join("")}
-          </tbody>
-          <tfoot>
-            <tr style="background: #f8f9fa; font-weight: bold; font-size: 1.1em;">
-              <td colspan="3" style="padding: 15px; text-align: right;">總金額：</td>
-              <td style="padding: 15px; text-align: right; color: #27ae60;">NT$ ${order.total.toLocaleString()}</td>
-            </tr>
-          </tfoot>
-        </table>
+      <div class="dishes-detail-box">
+        <h4 class="section-title">訂購菜品</h4>
+        <div class="dishes-detail-table">
+          <table class="detail-table">
+            <thead>
+              <tr>
+                <th>菜品名稱</th>
+                <th>單價</th>
+                <th>數量</th>
+                <th>小計</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${orderedDishes
+                .map((dish) => {
+                  const qty = order.dishQuantities[dish.name];
+                  const subtotal = dish.price * qty;
+                  return `
+                  <tr>
+                    <td data-label="菜品">${dish.name}</td>
+                    <td data-label="單價">NT$ ${dish.price.toLocaleString()}</td>
+                    <td data-label="數量">${qty}</td>
+                    <td data-label="小計"><strong>NT$ ${subtotal.toLocaleString()}</strong></td>
+                  </tr>
+                `;
+                })
+                .join("")}
+            </tbody>
+            <tfoot>
+              <tr class="total-row">
+                <td colspan="3">總金額：</td>
+                <td class="total-amount">NT$ ${order.total.toLocaleString()}</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
       </div>
     </div>
   `;
