@@ -5,6 +5,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>洪師傅2026金馬年菜訂購系統</title>
     <link rel="stylesheet" href="ChineseNewYear_Dishes.css" />
+
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+
     <!-- 匯出功能所需的庫 -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
@@ -17,22 +22,6 @@
         <h1>🧧 洪師傅2026金馬年菜 🧧</h1>
         <p>歡迎訂購美味年菜，讓您的新年好運來！</p>
       </header>
-
-      <!-- 統計面板 -->
-      <div class="statistics-panel">
-        <div class="stat-card">
-          <h3>總訂單數</h3>
-          <p class="stat-value" id="totalOrders">0</p>
-        </div>
-        <div class="stat-card">
-          <h3>總金額</h3>
-          <p class="stat-value" id="totalRevenue">NT$ 0</p>
-        </div>
-        <div class="stat-card">
-          <h3>熱門菜品</h3>
-          <p class="stat-value" id="popularDish">-</p>
-        </div>
-      </div>
 
       <!-- 菜品管理區 -->
       <div
@@ -81,21 +70,31 @@
             <h3>訂購人資料</h3>
             <div class="form-row">
               <div class="form-field">
-                <label for="orderNumber">訂單號碼 *</label>
+                <label for="orderNumber">訂單號碼(ex.001) *</label>
                 <input
                   type="text"
                   id="orderNumber"
-                  placeholder="請輸入自訂義訂單號碼"
+                  placeholder="請向洪師傅索取訂單號碼"
                   required
                 />
               </div>
               <div class="form-field">
                 <label for="customerName">姓名 *</label>
-                <input type="text" id="customerName" required />
+                <input
+                  type="text"
+                  id="customerName"
+                  placeholder="請填寫真實姓名"
+                  required
+                />
               </div>
               <div class="form-field">
                 <label for="customerPhone">聯絡電話 *</label>
-                <input type="tel" id="customerPhone" required />
+                <input
+                  type="tel"
+                  id="customerPhone"
+                  placeholder="請填寫聯絡電話"
+                  required
+                />
               </div>
             </div>
             <div class="form-row">
@@ -423,6 +422,8 @@
       </div>
     </div>
 
+    <!-- Firebase 配置 -->
+    <script src="firebase-config.js"></script>
     <script src="ChineseNewYear_Dishes.js"></script>
   </body>
 </html>

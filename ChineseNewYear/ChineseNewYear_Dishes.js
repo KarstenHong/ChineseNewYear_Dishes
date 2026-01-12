@@ -1,3 +1,248 @@
+// ==================== 權限控管 ====================
+
+// 管理員模式控制
+let isAdminMode = false;
+
+// 切換管理員模式（開發者功能）
+window.toggleAdminMode = function (password) {
+  const correctPassword = "admin2026"; // 可以自行修改密碼
+
+  if (!isAdminMode) {
+    // 開啟管理員模式
+    const inputPassword = password || prompt("請輸入管理員密碼：");
+
+    if (inputPassword === correctPassword) {
+      isAdminMode = true;
+      console.log(
+        "%c🔓 管理員模式已啟用 ✓",
+        "color: #27ae60; font-size: 16px; font-weight: bold;"
+      );
+      console.log(
+        "%c現在可以編輯和刪除訂單",
+        "color: #27ae60; font-size: 14px;"
+      );
+
+      // 重新載入訂單以顯示編輯/刪除按鈕
+      loadOrders();
+
+      showAlert("管理員模式已啟用\n現在可以編輯和刪除訂單", "success");
+      return "已啟用";
+    } else {
+      console.log("%c❌ 密碼錯誤", "color: #e74c3c; font-size: 14px;");
+      showAlert("密碼錯誤", "error");
+      return "密碼錯誤";
+    }
+  } else {
+    // 關閉管理員模式
+    isAdminMode = false;
+    console.log(
+      "%c🔒 管理員模式已關閉",
+      "color: #e74c3c; font-size: 16px; font-weight: bold;"
+    );
+
+    // 重新載入訂單以隱藏編輯/刪除按鈕
+    loadOrders();
+
+    showAlert("管理員模式已關閉", "info");
+    return "已關閉";
+  }
+};
+
+// 快速鍵啟用管理員模式 (Ctrl + Shift + A)
+document.addEventListener("keydown", function (e) {
+  if (e.ctrlKey && e.shiftKey && e.key === "A") {
+    e.preventDefault();
+    toggleAdminMode();
+  }
+});
+
+// ==================== Firebase 資料同步功能 ====================
+
+// Firebase 即時監聽器
+let ordersUnsubscribe = null;
+
+// 啟動 Firebase 即時監聽
+function startFirebaseRealtimeListener() {
+  if (!isFirebaseEnabled) {
+    console.log("Firebase 未啟用，使用本地資料");
+    return;
+  }
+
+  console.log("🔄 啟動 Firebase 即時監聽...");
+
+  // 監聽 orders 集合的所有變更
+  ordersUnsubscribe = db.collection("orders").onSnapshot(
+    (snapshot) => {
+      console.log("📡 收到 Firebase 資料更新");
+
+      orders = [];
+      snapshot.forEach((doc) => {
+        orders.push({
+          firebaseId: doc.id, // 儲存 Firebase 文檔 ID
+          ...doc.data(),
+        });
+      });
+
+      console.log(`✅ 已同步 ${orders.length} 筆訂單`);
+
+      // 備份到 localStorage
+      localStorage.setItem("orders", JSON.stringify(orders));
+
+      // 更新畫面
+      filteredOrders = [...orders];
+      loadOrders();
+    },
+    (error) => {
+      console.error("❌ Firebase 監聽失敗:", error);
+      showAlert("雲端連線中斷，將使用本地資料", "warning");
+    }
+  );
+}
+
+// 停止 Firebase 監聽（頁面關閉時）
+function stopFirebaseListener() {
+  if (ordersUnsubscribe) {
+    ordersUnsubscribe();
+    console.log("🛑 已停止 Firebase 監聽");
+  }
+}
+
+// 檢查訂單號碼是否已存在（從 Firebase）
+async function checkOrderNumberExists(orderNumber) {
+  if (!isFirebaseEnabled) {
+    // 本地模式檢查
+    return orders.some((o) => o.orderNumber === orderNumber);
+  }
+
+  try {
+    const snapshot = await db
+      .collection("orders")
+      .where("orderNumber", "==", orderNumber)
+      .get();
+
+    return !snapshot.empty;
+  } catch (error) {
+    console.error("檢查訂單號碼失敗:", error);
+    // 降級到本地檢查
+    return orders.some((o) => o.orderNumber === orderNumber);
+  }
+}
+
+// 新增訂單到 Firebase
+async function addOrderToFirebase(orderData) {
+  if (!isFirebaseEnabled) {
+    console.log("Firebase 未啟用，僅儲存到本地");
+    // 本地模式
+    orders.unshift(orderData);
+    localStorage.setItem("orders", JSON.stringify(orders));
+    return orderData;
+  }
+
+  try {
+    const docRef = await db.collection("orders").add({
+      ...orderData,
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+    });
+
+    console.log("✅ 訂單已新增到 Firebase:", docRef.id);
+
+    // 不需要手動更新 orders，即時監聽會自動更新
+    return { ...orderData, firebaseId: docRef.id };
+  } catch (error) {
+    console.error("❌ 新增到 Firebase 失敗:", error);
+    showAlert("無法同步到雲端，請檢查網路連線", "error");
+    throw error;
+  }
+}
+
+// 更新 Firebase 訂單
+async function updateOrderInFirebase(firebaseId, orderData) {
+  if (!isFirebaseEnabled || !firebaseId) {
+    console.log("Firebase 未啟用或無效的文檔ID");
+    return;
+  }
+
+  try {
+    await db
+      .collection("orders")
+      .doc(firebaseId)
+      .update({
+        ...orderData,
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+      });
+
+    console.log("✅ 訂單已更新到 Firebase:", firebaseId);
+  } catch (error) {
+    console.error("❌ 更新到 Firebase 失敗:", error);
+    showAlert("無法同步更新到雲端", "error");
+    throw error;
+  }
+}
+
+// 從 Firebase 刪除訂單
+async function deleteOrderFromFirebase(firebaseId) {
+  if (!isFirebaseEnabled || !firebaseId) {
+    return;
+  }
+
+  try {
+    await db.collection("orders").doc(firebaseId).delete();
+    console.log("✅ 訂單已從 Firebase 刪除:", firebaseId);
+    // 不需要手動更新 orders，即時監聽會自動更新
+  } catch (error) {
+    console.error("❌ 從 Firebase 刪除失敗:", error);
+    throw error;
+  }
+}
+
+// 從 Firebase 載入菜品（保持監聽）
+function startDishesListener() {
+  if (!isFirebaseEnabled) {
+    return;
+  }
+
+  db.collection("settings")
+    .doc("dishes")
+    .onSnapshot(
+      (doc) => {
+        if (doc.exists) {
+          const firebaseDishes = doc.data().list;
+          console.log(`✅ 菜品已更新: ${firebaseDishes.length} 個`);
+          DISHES = firebaseDishes;
+          localStorage.setItem("dishes", JSON.stringify(DISHES));
+          renderDishesInForm(); // 重新渲染菜品列表
+        }
+      },
+      (error) => {
+        console.error("❌ 監聽菜品失敗:", error);
+      }
+    );
+}
+
+// 儲存菜品到 Firebase
+async function saveDishesToFirebase() {
+  if (!isFirebaseEnabled) {
+    return;
+  }
+
+  try {
+    await db.collection("settings").doc("dishes").set({
+      list: DISHES,
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+    });
+    console.log("✅ 菜品已同步到 Firebase");
+  } catch (error) {
+    console.error("❌ 同步菜品到 Firebase 失敗:", error);
+  }
+}
+
+// 頁面關閉時清理監聽器
+window.addEventListener("beforeunload", () => {
+  stopFirebaseListener();
+});
+
+// ==================== 原有程式碼 ====================
+
 // 訂單數據存儲
 let orders = [];
 let groups = JSON.parse(localStorage.getItem("groups")) || [
@@ -14,9 +259,14 @@ let pageSize = 20;
 let filteredOrders = [];
 
 // 儲存菜品到 localStorage
-function saveDishes() {
+async function saveDishes() {
   localStorage.setItem("dishes", JSON.stringify(DISHES));
   console.log("菜品已儲存:", DISHES);
+
+  // 同步到 Firebase
+  if (isFirebaseEnabled) {
+    await saveDishesToFirebase();
+  }
 }
 
 // 菜品列表 - 從 localStorage 載入，如果沒有則使用預設值
@@ -157,27 +407,50 @@ function closeAlert() {
 }
 
 // 初始化頁面
-document.addEventListener("DOMContentLoaded", function () {
+document.addEventListener("DOMContentLoaded", async function () {
   console.log("頁面載入完成");
   console.log("DISHES 陣列:", DISHES);
   console.log("orders 陣列長度:", orders.length);
 
   // 開發者提示
   console.log(
-    "%c💡 開發者提示",
+    "%c💡 管理員功能",
     "color: #f39c12; font-size: 16px; font-weight: bold;"
   );
   console.log(
-    "%c若要顯示菜品管理功能，請在控制台輸入: toggleDishManagement()",
+    "%c啟用管理員模式：toggleAdminMode() 或按 Ctrl+Shift+A",
     "color: #3498db; font-size: 14px;"
   );
+  console.log(
+    "%c顯示菜品管理：toggleDishManagement()",
+    "color: #3498db; font-size: 14px;"
+  );
+  console.log("%c預設密碼：admin2026", "color: #95a5a6; font-size: 12px;");
 
-  // 先初始化 filteredOrders（必須在 loadOrders() 之前）
-  filteredOrders = [...orders];
+  // Firebase 即時同步
+  if (isFirebaseEnabled) {
+    console.log("🔥 啟動 Firebase 即時同步模式");
+    try {
+      // 啟動訂單即時監聽
+      startFirebaseRealtimeListener();
+
+      // 啟動菜品即時監聽
+      startDishesListener();
+
+      console.log("✅ Firebase 即時同步已啟動");
+      console.log("📡 所有資料變更將即時同步給所有使用者");
+    } catch (error) {
+      console.error("❌ Firebase 啟動失敗，使用本地資料", error);
+    }
+  } else {
+    // 本地模式：從 localStorage 載入
+    console.log("💾 使用本地資料模式");
+    filteredOrders = [...orders];
+    loadOrders();
+  }
 
   renderDishesInForm(); // 渲染菜品列表
   loadOrders();
-  updateStatistics();
   setupEventListeners();
   updateGroupOptions();
 });
@@ -346,15 +619,15 @@ function updateGroupOptions() {
 }
 
 // 處理表單提交
-function handleFormSubmit(e) {
+async function handleFormSubmit(e) {
   e.preventDefault();
 
   console.log("表單提交開始...");
 
   const orderNumber = document.getElementById("orderNumber").value.trim();
 
-  // 檢查訂單號碼是否重複
-  const isDuplicate = orders.some((order) => order.orderNumber === orderNumber);
+  // 從 Firebase 即時檢查訂單號碼是否重複
+  const isDuplicate = await checkOrderNumberExists(orderNumber);
   if (isDuplicate) {
     showAlert("此訂單號碼已存在，請使用不同的號碼！", "error");
     return;
@@ -401,7 +674,7 @@ function handleFormSubmit(e) {
     total += dish.price * qty;
   });
 
-  const order = {
+  const orderData = {
     id: Date.now(),
     orderNumber: orderNumber,
     customer: customerData,
@@ -410,17 +683,25 @@ function handleFormSubmit(e) {
     createdAt: new Date().toISOString(),
   };
 
-  console.log("準備儲存的訂單:", order);
+  console.log("準備儲存的訂單:", orderData);
 
-  orders.unshift(order);
-  console.log("訂單陣列(儲存前):", orders);
+  try {
+    // 直接新增到 Firebase（會自動觸發即時監聽更新畫面）
+    await addOrderToFirebase(orderData);
 
-  saveOrders();
-  console.log("已呼叫 saveOrders()");
+    console.log("✅ 訂單已成功新增");
 
-  filteredOrders = [...orders]; // 重置為全部訂單
-  loadOrders();
-  updateStatistics();
+    resetForm();
+    showAlert("訂單已成功建立！", "success");
+
+    document
+      .querySelector(".orders-section")
+      .scrollIntoView({ behavior: "smooth" });
+  } catch (error) {
+    console.error("新增訂單失敗:", error);
+    showAlert("新增訂單失敗，請稍後再試", "error");
+  }
+
   resetForm();
 
   showAlert("訂單已成功建立！", "success");
@@ -444,13 +725,13 @@ function resetForm() {
 }
 
 // 保存訂單到 LocalStorage
+// 儲存訂單到本地（僅用於本地模式或備份）
 function saveOrders() {
   try {
     localStorage.setItem("orders", JSON.stringify(orders));
     console.log("訂單已儲存到 localStorage，共", orders.length, "筆");
   } catch (error) {
     console.error("儲存訂單失敗:", error);
-    showAlert("儲存訂單時發生錯誤: " + error.message, "error");
   }
 }
 
@@ -510,6 +791,14 @@ function loadOrders() {
   // 生成表格行
   tbody.innerHTML = currentOrders
     .map((order) => {
+      // 根據管理員模式決定是否顯示編輯/刪除按鈕
+      const adminButtons = isAdminMode
+        ? `
+            <button class="btn-edit-small" onclick="editOrder(${order.id})">編輯</button>
+            <button class="btn-delete-small" onclick="deleteOrder(${order.id})">刪除</button>
+          `
+        : "";
+
       return `
         <tr>
           <td class="order-number" data-label="訂單號碼">${
@@ -526,12 +815,7 @@ function loadOrders() {
             <button class="btn-detail" onclick="showOrderDetail(${
               order.id
             })">詳情</button>
-            <button class="btn-edit-small" onclick="editOrder(${
-              order.id
-            })">編輯</button>
-            <button class="btn-delete-small" onclick="deleteOrder(${
-              order.id
-            })">刪除</button>
+            ${adminButtons}
           </td>
         </tr>
       `;
@@ -703,8 +987,37 @@ function closeOrderDetailModal() {
 }
 
 // 格式化日期
-function formatDate(dateString) {
-  const date = new Date(dateString);
+function formatDate(dateInput) {
+  let date;
+
+  // 處理 Firebase Timestamp 物件
+  if (dateInput && typeof dateInput.toDate === "function") {
+    date = dateInput.toDate();
+  }
+  // 處理已經是 Date 物件的情況
+  else if (dateInput instanceof Date) {
+    date = dateInput;
+  }
+  // 處理字串格式（ISO 8601 等）
+  else if (typeof dateInput === "string") {
+    date = new Date(dateInput);
+  }
+  // 處理數字時間戳（毫秒）
+  else if (typeof dateInput === "number") {
+    date = new Date(dateInput);
+  }
+  // 無效輸入
+  else {
+    console.warn("無效的日期格式:", dateInput);
+    return "無效日期";
+  }
+
+  // 檢查日期是否有效
+  if (isNaN(date.getTime())) {
+    console.warn("無法解析日期:", dateInput);
+    return "無效日期";
+  }
+
   return `${date.getFullYear()}/${String(date.getMonth() + 1).padStart(
     2,
     "0"
@@ -931,7 +1244,6 @@ function handleEditSubmit(e, orderId) {
   saveOrders();
   filteredOrders = [...orders]; // 重置為全部訂單
   loadOrders();
-  updateStatistics();
   closeEditModal();
 
   showAlert("訂單已成功更新！", "success");
@@ -944,14 +1256,33 @@ function closeEditModal() {
 
 // 刪除訂單
 function deleteOrder(orderId) {
-  showConfirm("確定要刪除此訂單嗎？", () => {
-    orders = orders.filter((o) => o.id !== orderId);
-    saveOrders();
-    filteredOrders = [...orders]; // 重置為全部訂單
-    loadOrders();
-    updateStatistics();
+  showConfirm("確定要刪除此訂單嗎？", async () => {
+    try {
+      const orderToDelete = orders.find((o) => o.id === orderId);
 
-    showAlert("訂單已刪除", "success");
+      if (!orderToDelete) {
+        showAlert("找不到訂單", "error");
+        return;
+      }
+
+      if (isFirebaseEnabled && orderToDelete.firebaseId) {
+        // Firebase 模式：直接從 Firebase 刪除（會自動觸發即時監聽更新畫面）
+        await deleteOrderFromFirebase(orderToDelete.firebaseId);
+        showAlert("訂單已刪除", "success");
+      } else {
+        // 本地模式：從陣列中移除
+        orders = orders.filter((o) => o.id !== orderId);
+        localStorage.setItem("orders", JSON.stringify(orders));
+
+        filteredOrders = [...orders];
+        loadOrders();
+
+        showAlert("訂單已刪除", "success");
+      }
+    } catch (error) {
+      console.error("刪除訂單失敗:", error);
+      showAlert("刪除訂單失敗，請稍後再試", "error");
+    }
   });
 }
 
@@ -1020,35 +1351,7 @@ function clearSearch() {
 }
 
 // 更新統計資料
-function updateStatistics() {
-  // 總訂單數
-  document.getElementById("totalOrders").textContent = orders.length;
-
-  // 總金額
-  const totalRevenue = orders.reduce((sum, order) => sum + order.total, 0);
-  document.getElementById("totalRevenue").textContent =
-    "NT$ " + totalRevenue.toLocaleString();
-
-  // 熱門菜品
-  const dishCount = {};
-  orders.forEach((order) => {
-    if (!order.dishQuantities) return;
-    DISHES.forEach((dish) => {
-      const qty = order.dishQuantities[dish.name] || 0;
-      dishCount[dish.name] = (dishCount[dish.name] || 0) + qty;
-    });
-  });
-
-  let popularDish = "-";
-  let maxCount = 0;
-  for (const [dish, count] of Object.entries(dishCount)) {
-    if (count > maxCount) {
-      maxCount = count;
-      popularDish = `${dish} (${count})`;
-    }
-  }
-  document.getElementById("popularDish").textContent = popularDish;
-}
+// updateStatistics 函數已移除（統計資訊已整合到匯出功能中）
 
 // 匯入 Excel
 function importFromExcel(event) {
@@ -1400,7 +1703,6 @@ function finishImport() {
   saveOrders();
   filteredOrders = [...orders]; // 重置為全部訂單
   loadOrders();
-  updateStatistics();
 
   // 組合提示訊息
   let message = "匯入完成！\n";
