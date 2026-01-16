@@ -20,8 +20,11 @@ let db = null;
 let isFirebaseEnabled = false;
 
 try {
-  // 檢查配置是否已設定
-  if (firebaseConfig.apiKey !== "AIzaSyBbBNjiBz1app7yySjHVkq4teiM18Yxv0I") {
+  // 檢查配置是否已設定（檢查是否還是預設的佔位符）
+  if (
+    firebaseConfig.apiKey &&
+    !firebaseConfig.apiKey.includes("YOUR_API_KEY")
+  ) {
     firebase.initializeApp(firebaseConfig);
     db = firebase.firestore();
     isFirebaseEnabled = true;

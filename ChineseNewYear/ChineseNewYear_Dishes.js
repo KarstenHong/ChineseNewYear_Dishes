@@ -56,6 +56,42 @@ document.addEventListener("keydown", function (e) {
   }
 });
 
+// ==================== 個資隱碼處理 ====================
+
+// 姓名隱碼：只顯示姓氏，名字用○代替
+function maskName(name) {
+  if (!name || name.length === 0) return "○○";
+  if (name.length === 1) return name;
+  if (name.length === 2) return name[0] + "○";
+  // 三個字以上：顯示第一個字，其餘用○
+  return name[0] + "○".repeat(name.length - 1);
+}
+
+// 電話隱碼：保留前4碼和後3碼，中間用****代替
+function maskPhone(phone) {
+  if (!phone) return "****";
+  const cleaned = phone.toString().replace(/\D/g, "");
+  if (cleaned.length <= 4) return "****";
+  if (cleaned.length <= 7) return cleaned.substring(0, 3) + "****";
+  // 標準手機號碼：0912****678
+  return (
+    cleaned.substring(0, 4) + "****" + cleaned.substring(cleaned.length - 3)
+  );
+}
+
+// 群組隱碼：顯示前兩個字，其餘用**代替
+function maskGroup(group) {
+  if (!group || group === "未分組") return "未分組";
+  if (group.length <= 2) return group;
+  return group.substring(0, 2) + "**";
+}
+
+// 判斷訂單是否需要隱碼
+function shouldMaskOrder() {
+  // 只有管理員模式才不隱碼，其他一律隱碼
+  return !isAdminMode;
+}
+
 // ==================== Firebase 資料同步功能 ====================
 
 // Firebase 即時監聽器
@@ -135,6 +171,11 @@ async function addOrderToFirebase(orderData) {
     // 本地模式
     orders.unshift(orderData);
     localStorage.setItem("orders", JSON.stringify(orders));
+
+    // 更新畫面
+    filteredOrders = [...orders];
+    loadOrders();
+
     return orderData;
   }
 
@@ -791,6 +832,21 @@ function loadOrders() {
   // 生成表格行
   tbody.innerHTML = currentOrders
     .map((order) => {
+      // 判斷是否需要隱碼
+      const needMask = shouldMaskOrder();
+      const orderNumber = order.orderNumber || order.id;
+
+      // 根據權限決定顯示的資料
+      const displayName = needMask
+        ? maskName(order.customer.name)
+        : order.customer.name;
+      const displayPhone = needMask
+        ? maskPhone(order.customer.phone)
+        : order.customer.phone;
+      const displayGroup = needMask
+        ? maskGroup(order.customer.group)
+        : order.customer.group || "未分組";
+
       // 根據管理員模式決定是否顯示編輯/刪除按鈕
       const adminButtons = isAdminMode
         ? `
@@ -801,12 +857,10 @@ function loadOrders() {
 
       return `
         <tr>
-          <td class="order-number" data-label="訂單號碼">${
-            order.orderNumber || order.id
-          }</td>
-          <td data-label="訂購人">${order.customer.name}</td>
-          <td data-label="聯絡電話">${order.customer.phone}</td>
-          <td data-label="所屬群組">${order.customer.group || "未分組"}</td>
+          <td class="order-number" data-label="訂單號碼">${orderNumber}</td>
+          <td data-label="訂購人">${displayName}</td>
+          <td data-label="聯絡電話">${displayPhone}</td>
+          <td data-label="所屬群組">${displayGroup}</td>
           <td class="order-date" data-label="訂購日期">${formatDate(
             order.createdAt
           )}</td>
@@ -895,6 +949,19 @@ function showOrderDetail(orderId) {
     return;
   }
 
+  // 判斷是否需要隱碼
+  const needMask = shouldMaskOrder();
+  const orderNumber = order.orderNumber || order.id;
+  const displayName = needMask
+    ? maskName(order.customer.name)
+    : order.customer.name;
+  const displayPhone = needMask
+    ? maskPhone(order.customer.phone)
+    : order.customer.phone;
+  const displayGroup = needMask
+    ? maskGroup(order.customer.group)
+    : order.customer.group || "未分組";
+
   // 計算訂購的菜品
   const orderedDishes = DISHES.filter(
     (dish) => order.dishQuantities[dish.name] > 0
@@ -903,24 +970,22 @@ function showOrderDetail(orderId) {
   // 生成詳情內容
   const detailContent = `
     <div class="order-detail-wrapper">
-      <h3 class="order-detail-title">訂單詳情 - ${
-        order.orderNumber || order.id
-      }</h3>
+      <h3 class="order-detail-title">訂單詳情 - ${orderNumber}</h3>
       
       <div class="customer-info-box">
         <h4 class="section-title">訂購人資訊</h4>
         <div class="info-grid">
           <div class="info-item">
             <span class="info-label">姓名：</span>
-            <span class="info-value">${order.customer.name}</span>
+            <span class="info-value">${displayName}</span>
           </div>
           <div class="info-item">
             <span class="info-label">電話：</span>
-            <span class="info-value">${order.customer.phone}</span>
+            <span class="info-value">${displayPhone}</span>
           </div>
           <div class="info-item">
             <span class="info-label">群組：</span>
-            <span class="info-value">${order.customer.group || "未分組"}</span>
+            <span class="info-value">${displayGroup}</span>
           </div>
           <div class="info-item">
             <span class="info-label">日期：</span>
